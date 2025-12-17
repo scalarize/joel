@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import './Profile.css';
+import ImagePicker from './ImagePicker';
 
 interface ProfileData {
 	id: string;
@@ -139,11 +140,11 @@ export default function Profile() {
 					<div className="current-info">
 						<div className="avatar-preview">
 							<img
-								src={profile.picture || '/default-avatar.png'}
+								src={profile.picture || 'https://via.placeholder.com/150?text=No+Avatar'}
 								alt={profile.name}
 								onError={(e) => {
 									(e.target as HTMLImageElement).src =
-										'https://via.placeholder.com/150?text=No+Avatar';
+										'https://via.placeholder.com/150?text=Invalid+Image';
 								}}
 							/>
 						</div>
@@ -179,27 +180,11 @@ export default function Profile() {
 						<p className="form-hint">显示名称不能为空，最多 100 个字符</p>
 					</div>
 
-					<div className="form-group">
-						<label htmlFor="picture">头像 URL</label>
-						<input
-							id="picture"
-							type="url"
-							value={displayPicture}
-							onChange={(e) => setDisplayPicture(e.target.value)}
-							placeholder="https://example.com/avatar.jpg"
-						/>
-						<p className="form-hint">
-							留空则清除头像
-							{profile.picture && (
-								<>
-									<br />
-									<a href={profile.picture} target="_blank" rel="noopener noreferrer">
-										查看当前头像
-									</a>
-								</>
-							)}
-						</p>
-					</div>
+					<ImagePicker
+						value={displayPicture}
+						onChange={setDisplayPicture}
+						label="头像"
+					/>
 
 					<div className="form-actions">
 						<button

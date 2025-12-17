@@ -10,6 +10,7 @@ import { loginTemplate, getDashboardTemplate } from './templates';
 
 interface Env {
 	DB: D1Database;
+	ASSETS: R2Bucket; // R2 bucket for storing uploaded images
 	GOOGLE_CLIENT_ID: string;
 	GOOGLE_CLIENT_SECRET: string;
 	BASE_URL?: string;
@@ -18,6 +19,11 @@ interface Env {
 	 * 例如：https://joel-pages.example.com
 	 */
 	FRONTEND_URL?: string;
+	/**
+	 * R2 公开访问的自定义域名
+	 * 例如：https://assets.joel.scalarize.org
+	 */
+	R2_PUBLIC_URL?: string;
 }
 
 export default {
@@ -49,6 +55,11 @@ export default {
 
 				if (path === '/api/profile' && request.method === 'PUT') {
 					return handleApiUpdateProfile(request, env);
+				}
+
+				// 图片上传
+				if (path === '/api/upload/image' && request.method === 'POST') {
+					return handleImageUpload(request, env);
 				}
 
 				// Google OAuth 授权入口
@@ -519,14 +530,18 @@ async function handleApiUpdateProfile(request: Request, env: Env): Promise<Respo
 		// 验证 picture 是有效的 URL（如果提供）
 		if (picture !== undefined && picture !== null && picture !== '') {
 			try {
-				new URL(picture);
+				const url = new URL(picture);
+				// 只允许 http 和 https 协议
+				if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+					throw new Error('Invalid protocol');
+				}
 			} catch {
 				return jsonWithCors(
 					request,
 					env,
 					{
 						error: 'Bad Request',
-						message: 'picture 必须是有效的 URL',
+						message: 'picture 必须是有效的 HTTP(S) URL',
 					},
 					400
 				);
@@ -556,6 +571,125 @@ async function handleApiUpdateProfile(request: Request, env: Env): Promise<Respo
 		);
 	} catch (error) {
 		console.error('[API] /api/profile 更新失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * 处理图片上传
+ */
+async function handleImageUpload(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/upload/image POST 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[API] /api/upload/image 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	try {
+		// 解析 multipart/form-data
+		const formData = await request.formData();
+		const file = formData.get('file') as File | null;
+
+		if (!file) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '缺少文件',
+				},
+				400
+			);
+		}
+
+		// 验证文件类型
+		if (!file.type.startsWith('image/')) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '只支持图片文件',
+				},
+				400
+			);
+		}
+
+		// 验证文件大小（限制为 5MB）
+		const maxSize = 5 * 1024 * 1024; // 5MB
+		if (file.size > maxSize) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '图片大小不能超过 5MB',
+				},
+				400
+			);
+		}
+
+		// 生成唯一的文件名：avatars/{userId}/{timestamp}-{random}.{ext}
+		const timestamp = Date.now();
+		const random = Math.random().toString(36).substring(2, 8);
+		const ext = file.name.split('.').pop() || 'jpg';
+		const fileName = `avatars/${session.userId}/${timestamp}-${random}.${ext}`;
+
+		console.log(`[API] /api/upload/image 上传文件: ${fileName}`);
+
+		// 上传到 R2
+		await env.ASSETS.put(fileName, file.stream(), {
+			httpMetadata: {
+				contentType: file.type,
+				cacheControl: 'public, max-age=31536000', // 缓存 1 年
+			},
+		});
+
+		// 生成公开 URL（必须配置 R2_PUBLIC_URL）
+		if (!env.R2_PUBLIC_URL) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Configuration Error',
+					message: 'R2_PUBLIC_URL 未配置',
+				},
+				500
+			);
+		}
+		const imageUrl = `${env.R2_PUBLIC_URL}/${fileName}`;
+
+		console.log(`[API] /api/upload/image 上传成功: ${imageUrl}`);
+
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				url: imageUrl,
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/upload/image 上传失败:', error);
 		return jsonWithCors(
 			request,
 			env,

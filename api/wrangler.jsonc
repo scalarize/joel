@@ -33,6 +33,12 @@
 			"database_id": "d4430036-7220-4a68-8123-718005607560",
 			"remote": true
 		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "ASSETS",
+			"bucket_name": "joel-assets"
+		}
 	]
 	/**
 	 * Environment Variables
