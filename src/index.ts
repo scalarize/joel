@@ -6,7 +6,7 @@
 import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
 import { upsertUser, getUserById } from './db/schema';
-import { loginTemplate, getUserTemplate } from './templates';
+import { loginTemplate, getDashboardTemplate } from './templates';
 
 interface Env {
 	DB: D1Database;
@@ -93,9 +93,9 @@ async function handleIndex(request: Request, env: Env): Promise<Response> {
 		});
 	}
 
-	// 显示用户信息页面
-	console.log(`[首页] 显示用户信息页面`);
-	const html = getUserTemplate(user.name, user.email, user.picture || undefined);
+	// 显示工作台页面
+	console.log(`[首页] 显示工作台页面`);
+	const html = getDashboardTemplate(user.name, user.email, user.picture || undefined);
 
 	return new Response(html, {
 		headers: { 'Content-Type': 'text/html; charset=utf-8' },
