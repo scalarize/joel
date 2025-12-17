@@ -54,8 +54,7 @@
 	"routes": [
 		{
 			// 核心路由：指定哪些请求由此Worker处理
-			"pattern": "joel.scalarize.org/api/*",
-			"custom_domain": true
+			"pattern": "joel.scalarize.org/api/*"
 		}
 	]
 }
