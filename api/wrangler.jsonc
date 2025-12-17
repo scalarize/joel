@@ -33,7 +33,7 @@
 			"database_id": "d4430036-7220-4a68-8123-718005607560",
 			"remote": true
 		}
-	],
+	]
 	/**
 	 * Environment Variables
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
@@ -51,10 +51,4 @@
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
 	 */
 	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
-	"routes": [
-		{
-			// 核心路由：指定哪些请求由此Worker处理
-			"pattern": "joel.scalarize.org/api/*"
-		}
-	]
 }
