@@ -1,10 +1,18 @@
 /**
  * 数据库 Schema 定义和初始化
+ * 
+ * 架构说明：
+ * - 当前：单一 Google OAuth 支持，users.id 直接使用 Google user ID
+ * - 未来扩展：如需支持多 OAuth 提供商，需要：
+ *   1. 将 users.id 改为内部 UUID
+ *   2. 创建 oauth_accounts 表存储不同 OAuth 账号
+ *   3. 通过 email 字段关联同一用户的不同 OAuth 账号
+ * 详见：docs/multi-oauth-architecture.md
  */
 
 export interface User {
-	id: string; // OAuth user ID (Google/GitHub/etc)
-	email: string;
+	id: string; // 当前：Google user ID；未来扩展：内部 UUID（需迁移）
+	email: string; // 用于多 OAuth 账号关联的关键字段（UNIQUE）
 	name: string; // 显示名称（用户可自定义覆盖）
 	picture?: string; // 头像 URL（用户可自定义覆盖）
 	created_at: string;

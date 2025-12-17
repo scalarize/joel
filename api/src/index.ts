@@ -261,9 +261,11 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		}
 
 		// 存储用户信息到数据库
+		// 注意：当前架构使用 Google user ID 作为主键
+		// 未来扩展多 OAuth 时，需要改为通过 email 查找或创建用户，并创建 oauth_accounts 记录
 		console.log(`[Callback] 存储用户信息到数据库`);
 		const user = await upsertUser(env.DB, {
-			id: googleUser.id,
+			id: googleUser.id, // 当前：直接使用 Google user ID
 			email: googleUser.email,
 			name: googleUser.name,
 			picture: googleUser.picture,
