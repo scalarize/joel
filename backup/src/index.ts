@@ -20,6 +20,64 @@ function generateBackupKey(compressed: boolean = true): string {
 }
 
 /**
+ * 通过 SQL 查询导出数据库（替代 dump() 方法）
+ */
+async function exportDatabaseAsSQL(db: D1Database): Promise<string> {
+	const sql: string[] = [];
+
+	// 1. 获取所有表名
+	const tablesResult = await db
+		.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' and name NOT like '_%'")
+		.all<{ name: string }>();
+
+	if (!tablesResult.results || tablesResult.results.length === 0) {
+		return '-- 数据库为空\n';
+	}
+
+	// 2. 对每个表导出数据
+	for (const table of tablesResult.results) {
+		const tableName = table.name;
+
+		// 获取表结构
+		const schemaResult = await db
+			.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`)
+			.bind(tableName)
+			.first<{ sql: string }>();
+
+		if (schemaResult?.sql) {
+			sql.push(`-- Table: ${tableName}`);
+			sql.push(schemaResult.sql + ';');
+			sql.push('');
+		}
+
+		// 导出数据
+		const dataResult = await db.prepare(`SELECT * FROM ${tableName}`).all();
+
+		if (dataResult.results && dataResult.results.length > 0) {
+			sql.push(`-- Data for table: ${tableName}`);
+
+			for (const row of dataResult.results) {
+				const columns = Object.keys(row);
+				const values = columns.map((col) => {
+					const value = row[col];
+					if (value === null) return 'NULL';
+					if (typeof value === 'string') {
+						// 转义单引号
+						return `'${value.replace(/'/g, "''")}'`;
+					}
+					return String(value);
+				});
+
+				sql.push(`INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${values.join(', ')});`);
+			}
+			sql.push('');
+		}
+	}
+
+	return sql.join('\n');
+}
+
+/**
  * 压缩 ArrayBuffer 数据（使用 gzip）
  */
 async function compressData(data: ArrayBuffer): Promise<ArrayBuffer> {
@@ -90,11 +148,7 @@ async function cleanupOldBackups(bucket: R2Bucket, retentionDays: number): Promi
 }
 
 export default {
-	async scheduled(
-		event: ScheduledEvent,
-		env: Env,
-		ctx: ExecutionContext
-	): Promise<void> {
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
 		const startTime = Date.now();
 		let backupKey = '';
 
@@ -105,13 +159,17 @@ export default {
 			backupKey = generateBackupKey(true);
 			console.log(`[Backup] 备份文件: ${backupKey}`);
 
-			// 2. 从 D1 创建数据库转储
+			// 2. 从 D1 导出数据库（使用 SQL 查询方式，因为 dump() 已废弃）
 			console.log('[Backup] 正在导出数据库...');
-			const dump = await env.DB.dump();
+			const sqlDump = await exportDatabaseAsSQL(env.DB);
 
-			if (!dump || dump.byteLength === 0) {
+			if (!sqlDump || sqlDump.length === 0) {
 				throw new Error('数据库导出为空');
 			}
+
+			// 将 SQL 字符串转换为 ArrayBuffer
+			const encoder = new TextEncoder();
+			const dump = encoder.encode(sqlDump).buffer;
 
 			const originalSizeMB = (dump.byteLength / (1024 * 1024)).toFixed(2);
 			console.log(`[Backup] 数据库导出成功，原始大小: ${originalSizeMB} MB`);
@@ -120,13 +178,8 @@ export default {
 			console.log('[Backup] 正在压缩备份...');
 			const compressedDump = await compressData(dump);
 			const compressedSizeMB = (compressedDump.byteLength / (1024 * 1024)).toFixed(2);
-			const compressionRatio = (
-				(1 - compressedDump.byteLength / dump.byteLength) *
-				100
-			).toFixed(1);
-			console.log(
-				`[Backup] 压缩完成，压缩后大小: ${compressedSizeMB} MB (压缩率: ${compressionRatio}%)`
-			);
+			const compressionRatio = ((1 - compressedDump.byteLength / dump.byteLength) * 100).toFixed(1);
+			console.log(`[Backup] 压缩完成，压缩后大小: ${compressedSizeMB} MB (压缩率: ${compressionRatio}%)`);
 
 			// 4. 将压缩后的 SQL 转储上传到 R2 存储桶
 			console.log('[Backup] 正在上传到 R2...');
