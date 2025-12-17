@@ -9,7 +9,8 @@ interface CloudflareAnalyticsResponse {
 			accounts?: Array<{
 				d1Queries?: Array<{
 					sum?: {
-						requests?: number;
+						readQueries?: number;
+						writeQueries?: number;
 						rowsRead?: number;
 						rowsWritten?: number;
 					};
@@ -91,7 +92,8 @@ export async function getCloudflareUsage(
         limit: 10000
       ) {
         sum {
-          requests
+          readQueries
+          writeQueries
           rowsRead
           rowsWritten
         }
@@ -178,12 +180,13 @@ export async function getCloudflareUsage(
 			(acc, group) => {
 				const sum = group.sum || {};
 				return {
-					requests: (acc.requests || 0) + (sum.requests || 0),
+					readQueries: (acc.readQueries || 0) + (sum.readQueries || 0),
+					writeQueries: (acc.writeQueries || 0) + (sum.writeQueries || 0),
 					rowsRead: (acc.rowsRead || 0) + (sum.rowsRead || 0),
 					rowsWritten: (acc.rowsWritten || 0) + (sum.rowsWritten || 0),
 				};
 			},
-			{ requests: 0, rowsRead: 0, rowsWritten: 0 }
+			{ readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 }
 		);
 
 		// 聚合 D1 存储数据
@@ -231,7 +234,7 @@ export async function getCloudflareUsage(
 
 		const metrics: UsageMetrics = {
 			d1: {
-				queries: d1QueriesSum.requests || 0,
+				queries: (d1QueriesSum.readQueries || 0) + (d1QueriesSum.writeQueries || 0),
 				rowsRead: d1QueriesSum.rowsRead || 0,
 				rowsWritten: d1QueriesSum.rowsWritten || 0,
 				storageBytes: d1StorageSum,
