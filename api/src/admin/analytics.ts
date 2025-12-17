@@ -79,65 +79,53 @@ export async function getCloudflareUsage(
 ): Promise<UsageMetrics> {
 	console.log(`[Analytics] 获取 Cloudflare 用量数据: ${accountId}`);
 
-	const graphqlQuery = `
-		query GetUsage($accountId: String!, $startTime: Time!, $endTime: Time!) {
-			viewer {
-				accounts(filter: { accountTag: $accountId }) {
-					# D1 查询统计
-					d1Queries: d1QueriesAdaptiveGroups(
-						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
-						limit: 10000
-					) {
-						sum {
-							requests
-							rowsRead
-							rowsWritten
-						}
-					}
-					# D1 存储容量
-					d1Storage: d1StorageAdaptiveGroups(
-						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
-						limit: 10000
-					) {
-						sum {
-							bytesStored
-						}
-					}
-					# R2 操作统计（A类：写入，B类：读取）
-					r2Operations: r2OperationsAdaptiveGroups(
-						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
-						limit: 10000
-					) {
-						dimensions {
-							actionType
-						}
-						sum {
-							requests
-						}
-					}
-					# R2 存储容量
-					r2Storage: r2StorageAdaptiveGroups(
-						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
-						limit: 10000
-					) {
-						sum {
-							bytesStored
-						}
-					}
-					# Workers 调用统计
-					workersInvocations: workersInvocationsAdaptiveGroups(
-						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
-						limit: 10000
-					) {
-						sum {
-							requests
-							cpuTime
-						}
-					}
-				}
-			}
-		}
-	`;
+	const graphqlQuery = `query GetUsage($accountId: String!, $startTime: Time!, $endTime: Time!) {
+  viewer {
+    accounts(filter: { accountTag: $accountId }) {
+      d1Queries: d1QueriesAdaptiveGroups(
+        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+      ) {
+        sum {
+          requests
+          rowsRead
+          rowsWritten
+        }
+      }
+      d1Storage: d1StorageAdaptiveGroups(
+        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+      ) {
+        sum {
+          bytesStored
+        }
+      }
+      r2Operations: r2OperationsAdaptiveGroups(
+        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+      ) {
+        dimensions {
+          actionType
+        }
+        sum {
+          requests
+        }
+      }
+      r2Storage: r2StorageAdaptiveGroups(
+        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+      ) {
+        sum {
+          bytesStored
+        }
+      }
+      workersInvocations: workersInvocationsAdaptiveGroups(
+        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+      ) {
+        sum {
+          requests
+          cpuTime
+        }
+      }
+    }
+  }
+}`;
 
 	try {
 		const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
