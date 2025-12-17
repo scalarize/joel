@@ -35,31 +35,61 @@ export default {
 					return handleApiOptions(request, env);
 				}
 
+				if (path === '/api/ping' && request.method === 'GET') {
+					return handleApiPing(request, env);
+				}
+
 				if (path === '/api/me' && request.method === 'GET') {
 					return handleApiMe(request, env);
+				}
+
+				// Google OAuth 授权入口
+				if (path === '/api/auth/google' && request.method === 'GET') {
+					return handleGoogleAuth(request, env);
+				}
+
+				// Google OAuth Callback
+				if (path === '/api/auth/google/callback' && request.method === 'GET') {
+					return handleGoogleCallback(request, env);
+				}
+
+				// 登出
+				if (path === '/api/logout' && request.method === 'GET') {
+					return handleLogout(request, env);
 				}
 
 				return handleApiNotFound(request, env);
 			}
 
-			// 根路径 - 显示登录页面或用户信息
+			// 根路径 - 显示登录页面或用户信息（保留兼容性，实际由 Pages 处理）
 			if (path === '/') {
 				return handleIndex(request, env);
 			}
 
-			// Google OAuth 授权入口
-			if (path === '/auth/google') {
-				return handleGoogleAuth(request, env);
+			// 兼容旧路径（重定向到新路径）
+			if (path === '/auth/google' && request.method === 'GET') {
+				console.log('[兼容] 旧路径 /auth/google 重定向到 /api/auth/google');
+				return new Response(null, {
+					status: 301,
+					headers: { Location: '/api/auth/google' },
+				});
 			}
 
-			// Google OAuth Callback
-			if (path === '/auth/google/callback') {
-				return handleGoogleCallback(request, env);
+			if (path === '/auth/google/callback' && request.method === 'GET') {
+				console.log('[兼容] 旧路径 /auth/google/callback 重定向到 /api/auth/google/callback');
+				const url = new URL(request.url);
+				return new Response(null, {
+					status: 301,
+					headers: { Location: `/api/auth/google/callback${url.search}` },
+				});
 			}
 
-			// 登出
-			if (path === '/logout') {
-				return handleLogout(request, env);
+			if (path === '/logout' && request.method === 'GET') {
+				console.log('[兼容] 旧路径 /logout 重定向到 /api/logout');
+				return new Response(null, {
+					status: 301,
+					headers: { Location: '/api/logout' },
+				});
 			}
 
 			// 404
@@ -139,7 +169,7 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 
 	// 构建回调 URL
 	const baseUrl = env.BASE_URL || new URL(request.url).origin;
-	const redirectUri = `${baseUrl}/auth/google/callback`;
+	const redirectUri = `${baseUrl}/api/auth/google/callback`;
 
 	// 生成授权 URL
 	const authUrl = generateAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, state);
@@ -206,17 +236,12 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 
 	// 构建回调 URL
 	const baseUrl = env.BASE_URL || new URL(request.url).origin;
-	const redirectUri = `${baseUrl}/auth/google/callback`;
+	const redirectUri = `${baseUrl}/api/auth/google/callback`;
 
 	try {
 		// 交换授权码获取访问令牌
 		console.log(`[Callback] 交换授权码获取 token`);
-		const tokenResponse = await exchangeCodeForToken(
-			code,
-			env.GOOGLE_CLIENT_ID,
-			env.GOOGLE_CLIENT_SECRET,
-			redirectUri
-		);
+		const tokenResponse = await exchangeCodeForToken(code, env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, redirectUri);
 
 		// 获取用户信息
 		console.log(`[Callback] 获取用户信息`);
@@ -271,10 +296,7 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		});
 	} catch (error) {
 		console.error(`[Callback] 处理失败:`, error);
-		return new Response(
-			`OAuth 回调处理失败: ${error instanceof Error ? error.message : 'Unknown error'}`,
-			{ status: 500 }
-		);
+		return new Response(`OAuth 回调处理失败: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 500 });
 	}
 }
 
@@ -295,6 +317,14 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 			'Set-Cookie': clearCookie,
 		},
 	});
+}
+
+/**
+ * API: Ping 健康检查
+ */
+function handleApiPing(request: Request, env: Env): Response {
+	console.log('[API] /api/ping 请求');
+	return jsonWithCors(request, env, { message: 'pong' }, 200);
 }
 
 /**
@@ -381,12 +411,7 @@ function handleApiOptions(request: Request, env: Env): Response {
 /**
  * 带 CORS 的 JSON 响应工具函数
  */
-function jsonWithCors(
-	request: Request,
-	env: Env,
-	data: unknown,
-	status: number
-): Response {
+function jsonWithCors(request: Request, env: Env, data: unknown, status: number): Response {
 	const headers = getCorsHeaders(request, env);
 	headers.set('Content-Type', 'application/json; charset=utf-8');
 	return new Response(JSON.stringify(data), {
@@ -428,15 +453,8 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 		headers.set('Access-Control-Allow-Credentials', 'true');
 	}
 
-	headers.set(
-		'Access-Control-Allow-Headers',
-		request.headers.get('Access-Control-Request-Headers') || 'Content-Type, Authorization'
-	);
-	headers.set(
-		'Access-Control-Allow-Methods',
-		'GET,HEAD,POST,PUT,DELETE,OPTIONS'
-	);
+	headers.set('Access-Control-Allow-Headers', request.headers.get('Access-Control-Request-Headers') || 'Content-Type, Authorization');
+	headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,DELETE,OPTIONS');
 
 	return headers;
 }
-
