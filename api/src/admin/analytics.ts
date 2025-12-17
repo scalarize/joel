@@ -79,11 +79,16 @@ export async function getCloudflareUsage(
 ): Promise<UsageMetrics> {
 	console.log(`[Analytics] 获取 Cloudflare 用量数据: ${accountId}`);
 
-	const graphqlQuery = `query GetUsage($accountId: String!, $startTime: Time!, $endTime: Time!) {
+	// 将 ISO 8601 时间戳转换为日期格式 (YYYY-MM-DD)
+	const startDate = new Date(startTime).toISOString().split('T')[0];
+	const endDate = new Date(endTime).toISOString().split('T')[0];
+
+	const graphqlQuery = `query GetUsage($accountId: String!, $startDate: Date!, $endDate: Date!) {
   viewer {
     accounts(filter: { accountTag: $accountId }) {
       d1Queries: d1QueriesAdaptiveGroups(
-        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+        filter: { date_geq: $startDate, date_leq: $endDate }
+        limit: 10000
       ) {
         sum {
           requests
@@ -92,14 +97,16 @@ export async function getCloudflareUsage(
         }
       }
       d1Storage: d1StorageAdaptiveGroups(
-        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+        filter: { date_geq: $startDate, date_leq: $endDate }
+        limit: 10000
       ) {
         sum {
           bytesStored
         }
       }
       r2Operations: r2OperationsAdaptiveGroups(
-        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+        filter: { date_geq: $startDate, date_leq: $endDate }
+        limit: 10000
       ) {
         dimensions {
           actionType
@@ -109,14 +116,16 @@ export async function getCloudflareUsage(
         }
       }
       r2Storage: r2StorageAdaptiveGroups(
-        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+        filter: { date_geq: $startDate, date_leq: $endDate }
+        limit: 10000
       ) {
         sum {
           bytesStored
         }
       }
       workersInvocations: workersInvocationsAdaptiveGroups(
-        filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+        filter: { date_geq: $startDate, date_leq: $endDate }
+        limit: 10000
       ) {
         sum {
           requests
@@ -138,8 +147,8 @@ export async function getCloudflareUsage(
 				query: graphqlQuery,
 				variables: {
 					accountId,
-					startTime,
-					endTime,
+					startDate,
+					endDate,
 				},
 			}),
 		});
