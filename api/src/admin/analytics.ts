@@ -7,37 +7,37 @@ interface CloudflareAnalyticsResponse {
 	data?: {
 		viewer?: {
 			accounts?: Array<{
-				d1QueriesAdaptiveGroups?: {
+				d1Queries?: Array<{
 					sum?: {
 						requests?: number;
 						rowsRead?: number;
 						rowsWritten?: number;
 					};
-				};
-				d1StorageAdaptiveGroups?: {
+				}>;
+				d1Storage?: Array<{
 					sum?: {
 						bytesStored?: number;
 					};
-				};
-				r2OperationsAdaptiveGroups?: {
+				}>;
+				r2Operations?: Array<{
 					dimensions?: {
 						actionType?: string;
 					};
 					sum?: {
 						requests?: number;
 					};
-				};
-				r2StorageAdaptiveGroups?: {
+				}>;
+				r2Storage?: Array<{
 					sum?: {
 						bytesStored?: number;
 					};
-				};
-				workersInvocationsAdaptiveGroups?: {
+				}>;
+				workersInvocations?: Array<{
 					sum?: {
 						requests?: number;
 						cpuTime?: number;
 					};
-				};
+				}>;
 			}>;
 		};
 	};
@@ -84,7 +84,7 @@ export async function getCloudflareUsage(
 			viewer {
 				accounts(filter: { accountTag: $accountId }) {
 					# D1 查询统计
-					d1QueriesAdaptiveGroups(
+					d1Queries: d1QueriesAdaptiveGroups(
 						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
 						limit: 10000
 					) {
@@ -95,7 +95,7 @@ export async function getCloudflareUsage(
 						}
 					}
 					# D1 存储容量
-					d1StorageAdaptiveGroups(
+					d1Storage: d1StorageAdaptiveGroups(
 						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
 						limit: 10000
 					) {
@@ -104,7 +104,7 @@ export async function getCloudflareUsage(
 						}
 					}
 					# R2 操作统计（A类：写入，B类：读取）
-					r2OperationsAdaptiveGroups(
+					r2Operations: r2OperationsAdaptiveGroups(
 						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
 						limit: 10000
 					) {
@@ -116,7 +116,7 @@ export async function getCloudflareUsage(
 						}
 					}
 					# R2 存储容量
-					r2StorageAdaptiveGroups(
+					r2Storage: r2StorageAdaptiveGroups(
 						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
 						limit: 10000
 					) {
@@ -125,7 +125,7 @@ export async function getCloudflareUsage(
 						}
 					}
 					# Workers 调用统计
-					workersInvocationsAdaptiveGroups(
+					workersInvocations: workersInvocationsAdaptiveGroups(
 						filter: { datetime_geq: $startTime, datetime_lt: $endTime }
 						limit: 10000
 					) {
@@ -176,7 +176,7 @@ export async function getCloudflareUsage(
 		}
 
 		// 聚合 D1 查询数据
-		const d1Queries = account.d1QueriesAdaptiveGroups || [];
+		const d1Queries = account.d1Queries || [];
 		const d1QueriesSum = d1Queries.reduce(
 			(acc, group) => {
 				const sum = group.sum || {};
@@ -190,14 +190,14 @@ export async function getCloudflareUsage(
 		);
 
 		// 聚合 D1 存储数据
-		const d1Storage = account.d1StorageAdaptiveGroups || [];
+		const d1Storage = account.d1Storage || [];
 		const d1StorageSum = d1Storage.reduce(
 			(acc, group) => (acc + (group.sum?.bytesStored || 0)),
 			0
 		);
 
 		// 聚合 R2 操作数据（A类：写入，B类：读取）
-		const r2Operations = account.r2OperationsAdaptiveGroups || [];
+		const r2Operations = account.r2Operations || [];
 		let classAOperations = 0;
 		let classBOperations = 0;
 		for (const group of r2Operations) {
@@ -213,14 +213,14 @@ export async function getCloudflareUsage(
 		}
 
 		// 聚合 R2 存储数据
-		const r2Storage = account.r2StorageAdaptiveGroups || [];
+		const r2Storage = account.r2Storage || [];
 		const r2StorageSum = r2Storage.reduce(
 			(acc, group) => (acc + (group.sum?.bytesStored || 0)),
 			0
 		);
 
 		// 聚合 Workers 调用数据
-		const workersInvocations = account.workersInvocationsAdaptiveGroups || [];
+		const workersInvocations = account.workersInvocations || [];
 		const workersSum = workersInvocations.reduce(
 			(acc, group) => {
 				const sum = group.sum || {};
