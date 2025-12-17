@@ -69,6 +69,14 @@ BASE_URL=http://localhost:8787
 # 可选：如果你使用 Cloudflare Pages 作为前端，这里可以配置前端地址
 # 例如：https://joel-pages.example.com
 FRONTEND_URL=http://localhost:8787
+# R2 公开访问的自定义域名（如果使用）
+R2_PUBLIC_URL=https://assets.joel.scalarize.org
+# Cloudflare API Token（用于管理员后台获取 Analytics 数据）
+# 需要在 Cloudflare Dashboard > My Profile > API Tokens 创建
+# 权限需要包括：Account Analytics Read
+CF_API_TOKEN=你的Cloudflare API Token
+# Cloudflare 账户 ID（可以在 Cloudflare Dashboard 右侧边栏找到）
+CF_ACCOUNT_ID=你的Cloudflare账户ID
 ```
 
 #### 生产环境
@@ -84,6 +92,12 @@ wrangler secret put GOOGLE_CLIENT_SECRET
 
 # 设置 BASE_URL（环境变量，可选）
 wrangler secret put BASE_URL
+
+# 设置 Cloudflare API Token（用于管理员后台 Analytics）
+wrangler secret put CF_API_TOKEN
+
+# 设置 Cloudflare Account ID（环境变量，可选）
+wrangler secret put CF_ACCOUNT_ID
 ```
 
 或者在 `wrangler.jsonc` 中添加 `vars` 配置（仅用于非敏感配置）：
@@ -95,7 +109,32 @@ wrangler secret put BASE_URL
 }
 ```
 
-## 二、Google Cloud Console 配置
+## 二、Cloudflare Analytics API 配置（管理员后台）
+
+### 1. 创建 Cloudflare API Token
+
+1. 访问 [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. 进入 **My Profile** > **API Tokens**
+3. 点击 **Create Token**
+4. 选择 **Create Custom Token**
+5. 配置权限：
+   - **Account** > **Analytics** > **Read**
+6. 设置账户资源：
+   - 选择你的账户（或选择 **All accounts**）
+7. 创建 Token 后，**立即复制并保存**（只显示一次）
+
+### 2. 获取 Cloudflare 账户 ID
+
+1. 在 Cloudflare Dashboard 右侧边栏找到 **Account ID**
+2. 复制账户 ID（格式类似：`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`）
+
+### 3. 配置环境变量
+
+将获取的 API Token 和 Account ID 添加到 `.dev.vars`（本地开发）或使用 `wrangler secret put`（生产环境）。
+
+**注意**：管理员后台功能需要管理员权限，当前硬编码为 `scalarize@gmail.com`。如需修改，请编辑 `api/src/admin/auth.ts`。
+
+## 三、Google Cloud Console 配置
 
 ### 1. 创建 OAuth 2.0 客户端 ID
 
@@ -124,7 +163,7 @@ wrangler secret put BASE_URL
    - `profile`
 5. 添加测试用户（如果应用处于测试模式）
 
-## 三、部署和测试
+## 四、部署和测试
 
 ### 1. 本地开发
 
@@ -144,7 +183,7 @@ npm run deploy
 
 部署后，访问你的 Worker URL 测试登录功能。
 
-## 四、验证清单
+## 五、验证清单
 
 - [ ] D1 数据库已创建并配置
 - [ ] 数据库表结构已初始化
@@ -155,7 +194,7 @@ npm run deploy
 - [ ] 本地测试登录功能正常
 - [ ] 生产环境登录功能正常
 
-## 五、故障排查
+## 六、故障排查
 
 ### 问题：OAuth 回调失败
 
@@ -175,7 +214,7 @@ npm run deploy
 - 确认 `HttpOnly` 和 `SameSite` 设置
 - 生产环境需要 `Secure` 标志（HTTPS）
 
-## 六、安全注意事项
+## 七、安全注意事项
 
 1. **不要将 `.dev.vars` 文件提交到 Git**
 2. **使用 Wrangler secrets 存储敏感信息**

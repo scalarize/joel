@@ -7,6 +7,8 @@ import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } fro
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
 import { upsertUser, getUserById, updateUserProfile } from './db/schema';
 import { loginTemplate, getDashboardTemplate } from './templates';
+import { checkAdminAccess } from './admin/auth';
+import { getCloudflareUsage } from './admin/analytics';
 
 interface Env {
 	DB: D1Database;
@@ -24,6 +26,16 @@ interface Env {
 	 * 例如：https://assets.joel.scalarize.org
 	 */
 	R2_PUBLIC_URL?: string;
+	/**
+	 * Cloudflare API Token（用于获取 Analytics 数据）
+	 * 需要在 Cloudflare Dashboard 创建，权限包括：Account Analytics Read
+	 */
+	CF_API_TOKEN?: string;
+	/**
+	 * Cloudflare 账户 ID
+	 * 可以在 Cloudflare Dashboard 右侧边栏找到
+	 */
+	CF_ACCOUNT_ID?: string;
 }
 
 export default {
@@ -75,6 +87,11 @@ export default {
 				// 登出
 				if (path === '/api/logout' && request.method === 'GET') {
 					return handleLogout(request, env);
+				}
+
+				// 管理员 API：获取 Cloudflare 用量数据
+				if (path === '/api/admin/analytics' && request.method === 'GET') {
+					return handleAdminAnalytics(request, env);
 				}
 
 				return handleApiNotFound(request, env);
@@ -728,6 +745,76 @@ function handleApiOptions(request: Request, env: Env): Response {
 		status: 204,
 		headers,
 	});
+}
+
+/**
+ * API: 管理员 - 获取 Cloudflare 用量数据
+ */
+async function handleAdminAnalytics(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/admin/analytics 请求');
+
+	// 检查管理员权限
+	const admin = await checkAdminAccess(request, env.DB);
+	if (!admin) {
+		console.log('[API] /api/admin/analytics 权限不足');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '需要管理员权限',
+			},
+			403
+		);
+	}
+
+	// 检查环境变量配置
+	if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) {
+		console.error('[API] /api/admin/analytics Cloudflare API 配置不完整');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Configuration Error',
+				message: 'Cloudflare API 配置不完整，请联系管理员',
+			},
+			500
+		);
+	}
+
+	// 解析查询参数（时间范围）
+	const url = new URL(request.url);
+	const startTime = url.searchParams.get('startTime') || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // 默认30天前
+	const endTime = url.searchParams.get('endTime') || new Date().toISOString(); // 默认现在
+
+	try {
+		console.log(`[API] /api/admin/analytics 获取用量数据: ${startTime} 到 ${endTime}`);
+		const metrics = await getCloudflareUsage(
+			env.CF_ACCOUNT_ID,
+			env.CF_API_TOKEN,
+			startTime,
+			endTime
+		);
+
+		console.log(`[API] /api/admin/analytics 返回用量数据`);
+		return jsonWithCors(
+			request,
+			env,
+			metrics,
+			200
+		);
+	} catch (error) {
+		console.error(`[API] /api/admin/analytics 获取用量数据失败:`, error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '获取用量数据失败',
+			},
+			500
+		);
+	}
 }
 
 /**

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import './App.css';
 import Profile from './Profile';
+import Admin from './Admin';
 
 interface User {
 	id: string;
@@ -77,6 +78,12 @@ function App() {
 				{path === '/profile' ? (
 					user ? (
 						<Profile />
+					) : (
+						<LoginPrompt onLogin={handleLogin} />
+					)
+				) : path === '/admin' ? (
+					user ? (
+						<Admin />
 					) : (
 						<LoginPrompt onLogin={handleLogin} />
 					)
