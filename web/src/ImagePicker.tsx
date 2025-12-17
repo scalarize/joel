@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import './ImagePicker.css';
+import ImageCropper from './ImageCropper';
 
 interface ImagePickerProps {
 	value: string;
@@ -11,6 +12,8 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 	const [mode, setMode] = useState<'url' | 'upload'>('url');
 	const [uploading, setUploading] = useState(false);
 	const [uploadError, setUploadError] = useState<string | null>(null);
+	const [showCropper, setShowCropper] = useState(false);
+	const [imageToCrop, setImageToCrop] = useState<string | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,13 +33,31 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 			return;
 		}
 
+		setUploadError(null);
+
+		// 读取文件并显示裁剪器
+		const reader = new FileReader();
+		reader.onload = () => {
+			if (typeof reader.result === 'string') {
+				setImageToCrop(reader.result);
+				setShowCropper(true);
+			}
+		};
+		reader.onerror = () => {
+			setUploadError('文件读取失败，请重试');
+		};
+		reader.readAsDataURL(file);
+	};
+
+	const handleCropComplete = async (croppedImageBlob: Blob) => {
+		setShowCropper(false);
 		setUploading(true);
 		setUploadError(null);
 
 		try {
-			// 上传文件到服务器
+			// 上传裁剪后的图片到服务器
 			const formData = new FormData();
-			formData.append('file', file);
+			formData.append('file', croppedImageBlob, 'cropped-image.jpg');
 
 			const response = await fetch('/api/upload/image', {
 				method: 'POST',
@@ -60,6 +81,15 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 			setUploadError(error instanceof Error ? error.message : '图片上传失败，请重试');
 		} finally {
 			setUploading(false);
+			setImageToCrop(null);
+		}
+	};
+
+	const handleCropCancel = () => {
+		setShowCropper(false);
+		setImageToCrop(null);
+		if (fileInputRef.current) {
+			fileInputRef.current.value = '';
 		}
 	};
 
@@ -161,9 +191,20 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 					<p className="form-hint">
 						支持 JPG、PNG、GIF 等图片格式，最大 5MB
 						<br />
-						图片将上传到云端存储
+						选择图片后可进行裁剪和缩放
 					</p>
 				</div>
+			)}
+
+			{/* 图片裁剪器 */}
+			{showCropper && imageToCrop && (
+				<ImageCropper
+					imageSrc={imageToCrop}
+					onCropComplete={handleCropComplete}
+					onCancel={handleCropCancel}
+					aspect={1}
+					cropShape="round"
+				/>
 			)}
 		</div>
 	);
