@@ -9,7 +9,7 @@
 	"compatibility_date": "2025-12-17",
 	"observability": {
 		"enabled": true
-	}
+	},
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -21,6 +21,19 @@
 	 * databases, object storage, AI inference, real-time communication and more.
 	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
 	 */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "joel-db",
+			"database_id": "d4430036-7220-4a68-8123-718005607560"
+		},
+		{
+			"binding": "joel_db",
+			"database_name": "joel-db",
+			"database_id": "d4430036-7220-4a68-8123-718005607560",
+			"remote": true
+		}
+	]
 	/**
 	 * Environment Variables
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
