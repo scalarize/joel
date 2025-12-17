@@ -3,13 +3,13 @@
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
-		"deploy": "cd api && wrangler deploy",
+		"deploy": "npm run deploy:worker && npm run deploy:pages",
 		"dev": "cd api && wrangler dev",
 		"start": "cd api && wrangler dev",
 		"test": "cd api && vitest",
 		"cf-typegen": "cd api && wrangler types",
 		"deploy:worker": "cd api && wrangler deploy",
-		"deploy:pages": "wrangler pages deploy web"
+		"deploy:pages": "cd web && npm run build && wrangler pages deploy dist --project-name joel-pages"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
