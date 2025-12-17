@@ -34,9 +34,20 @@ body {
 }
 
 .logo {
+	text-decoration: none;
+	color: #667eea;
+	cursor: pointer;
+	transition: opacity 0.2s;
+}
+
+.logo:hover {
+	opacity: 0.8;
+}
+
+.logo h1 {
 	font-size: 24px;
 	font-weight: 600;
-	color: #667eea;
+	margin: 0;
 }
 
 .user-section {
@@ -49,6 +60,20 @@ body {
 	display: flex;
 	align-items: center;
 	gap: 12px;
+}
+
+.user-link {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	text-decoration: none;
+	color: inherit;
+	cursor: pointer;
+	transition: opacity 0.2s;
+}
+
+.user-link:hover {
+	opacity: 0.8;
 }
 
 .user-avatar {

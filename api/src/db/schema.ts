@@ -3,10 +3,10 @@
  */
 
 export interface User {
-	id: string; // Google user ID
+	id: string; // OAuth user ID (Google/GitHub/etc)
 	email: string;
-	name: string;
-	picture?: string;
+	name: string; // 显示名称（用户可自定义覆盖）
+	picture?: string; // 头像 URL（用户可自定义覆盖）
 	created_at: string;
 	updated_at: string;
 }
@@ -109,5 +109,53 @@ export async function getUserByEmail(
 	}
 
 	return result || null;
+}
+
+/**
+ * 更新用户 Profile（名称和头像）
+ * 注意：这会直接覆盖 name 和 picture，不会保留 OAuth 原始值
+ * 如果用户想恢复，可以重新登录（OAuth 会重新获取原始值）
+ */
+export async function updateUserProfile(
+	db: D1Database,
+	userId: string,
+	profile: {
+		name?: string | null;
+		picture?: string | null;
+	}
+): Promise<User> {
+	console.log(`[数据库] 更新用户 Profile: ${userId}`);
+
+	const now = new Date().toISOString();
+	const updates: string[] = [];
+	const values: unknown[] = [];
+
+	if (profile.name !== undefined) {
+		updates.push('name = ?');
+		values.push(profile.name);
+	}
+
+	if (profile.picture !== undefined) {
+		updates.push('picture = ?');
+		values.push(profile.picture);
+	}
+
+	if (updates.length === 0) {
+		throw new Error('[数据库] 没有要更新的字段');
+	}
+
+	updates.push('updated_at = ?');
+	values.push(now);
+	values.push(userId);
+
+	const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ? RETURNING *`;
+	const result = await db.prepare(sql).bind(...values).first<User>();
+
+	if (!result) {
+		throw new Error(`[数据库] 更新用户 Profile 失败: ${userId}`);
+	}
+
+	console.log(`[数据库] 用户 Profile 更新成功: ${userId}`);
+	return result;
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import './App.css';
+import Profile from './Profile';
 
 interface User {
 	id: string;
@@ -66,11 +67,24 @@ function App() {
 		);
 	}
 
+	// 简单的路由处理
+	const path = window.location.pathname;
+
 	return (
 		<div className="app">
 			<Header user={user} onLogin={handleLogin} onLogout={handleLogout} />
 			<main className="main-content">
-				{user ? <Dashboard /> : <LoginPrompt onLogin={handleLogin} />}
+				{path === '/profile' ? (
+					user ? (
+						<Profile />
+					) : (
+						<LoginPrompt onLogin={handleLogin} />
+					)
+				) : user ? (
+					<Dashboard />
+				) : (
+					<LoginPrompt onLogin={handleLogin} />
+				)}
 			</main>
 		</div>
 	);
@@ -88,17 +102,21 @@ function Header({
 	return (
 		<header className="header">
 			<div className="header-content">
-				<h1 className="logo">Joel</h1>
+				<a href="/" className="logo">
+					<h1>Joel</h1>
+				</a>
 				<div className="user-section">
 					{user ? (
 						<div className="user-info">
-							{user.picture && (
-								<img src={user.picture} alt={user.name} className="user-avatar" />
-							)}
-							<div className="user-details">
-								<span className="user-name">{user.name}</span>
-								<span className="user-email">{user.email}</span>
-							</div>
+							<a href="/profile" className="user-link">
+								{user.picture && (
+									<img src={user.picture} alt={user.name} className="user-avatar" />
+								)}
+								<div className="user-details">
+									<span className="user-name">{user.name}</span>
+									<span className="user-email">{user.email}</span>
+								</div>
+							</a>
 							<button onClick={onLogout} className="logout-btn">
 								退出
 							</button>
@@ -148,6 +166,13 @@ function LoginPrompt({ onLogin }: { onLogin: () => void }) {
 
 function Dashboard() {
 	const modules = [
+		{
+			id: 'profile',
+			title: '个人资料',
+			description: '管理显示名称和头像',
+			url: '/profile',
+			icon: '👤',
+		},
 		{
 			id: 'favor',
 			title: '书签收藏',

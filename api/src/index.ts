@@ -5,7 +5,7 @@
 
 import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
-import { upsertUser, getUserById } from './db/schema';
+import { upsertUser, getUserById, updateUserProfile } from './db/schema';
 import { loginTemplate, getDashboardTemplate } from './templates';
 
 interface Env {
@@ -41,6 +41,14 @@ export default {
 
 				if (path === '/api/me' && request.method === 'GET') {
 					return handleApiMe(request, env);
+				}
+
+				if (path === '/api/profile' && request.method === 'GET') {
+					return handleApiGetProfile(request, env);
+				}
+
+				if (path === '/api/profile' && request.method === 'PUT') {
+					return handleApiUpdateProfile(request, env);
 				}
 
 				// Google OAuth 授权入口
@@ -378,6 +386,184 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 		},
 		200
 	);
+}
+
+/**
+ * API: 获取用户 Profile（包含原始和自定义信息）
+ */
+async function handleApiGetProfile(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/profile GET 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[API] /api/profile 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	const user = await getUserById(env.DB, session.userId);
+	if (!user) {
+		console.warn(`[API] /api/profile 数据库未找到用户: ${session.userId}`);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Not Found',
+				message: '用户不存在',
+			},
+			404
+		);
+	}
+
+	console.log(`[API] /api/profile 返回用户 Profile: ${user.email}`);
+	return jsonWithCors(
+		request,
+		env,
+		{
+			id: user.id,
+			email: user.email,
+			name: user.name,
+			picture: user.picture ?? null,
+		},
+		200
+	);
+}
+
+/**
+ * API: 更新用户 Profile
+ */
+async function handleApiUpdateProfile(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/profile PUT 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[API] /api/profile 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { name, picture } = body as {
+			name?: string;
+			picture?: string;
+		};
+
+		// 验证输入
+		if (name !== undefined && typeof name !== 'string') {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'name 必须是字符串',
+				},
+				400
+			);
+		}
+
+		if (picture !== undefined && typeof picture !== 'string') {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'picture 必须是字符串',
+				},
+				400
+			);
+		}
+
+		// 验证 name 长度和必填
+		if (name !== undefined) {
+			if (name.trim() === '') {
+				return jsonWithCors(
+					request,
+					env,
+					{
+						error: 'Bad Request',
+						message: 'name 不能为空',
+					},
+					400
+				);
+			}
+			if (name.length > 100) {
+				return jsonWithCors(
+					request,
+					env,
+					{
+						error: 'Bad Request',
+						message: 'name 长度不能超过 100 个字符',
+					},
+					400
+				);
+			}
+		}
+
+		// 验证 picture 是有效的 URL（如果提供）
+		if (picture !== undefined && picture !== null && picture !== '') {
+			try {
+				new URL(picture);
+			} catch {
+				return jsonWithCors(
+					request,
+					env,
+					{
+						error: 'Bad Request',
+						message: 'picture 必须是有效的 URL',
+					},
+					400
+				);
+			}
+		}
+
+		console.log(`[API] /api/profile 更新用户 Profile: ${session.userId}`);
+		const updatedUser = await updateUserProfile(env.DB, session.userId, {
+			name: name !== undefined ? name.trim() : undefined,
+			picture: picture === '' ? null : picture,
+		});
+
+		console.log(`[API] /api/profile 更新成功: ${updatedUser.email}`);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				user: {
+					id: updatedUser.id,
+					email: updatedUser.email,
+					name: updatedUser.name,
+					picture: updatedUser.picture ?? null,
+				},
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/profile 更新失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		);
+	}
 }
 
 /**
