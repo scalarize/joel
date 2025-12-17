@@ -13,6 +13,11 @@ interface Env {
 	GOOGLE_CLIENT_ID: string;
 	GOOGLE_CLIENT_SECRET: string;
 	BASE_URL?: string;
+	/**
+	 * 可选：前端（Cloudflare Pages）地址，用于 CORS 及前端访问
+	 * 例如：https://joel-pages.example.com
+	 */
+	FRONTEND_URL?: string;
 }
 
 export default {
@@ -23,6 +28,20 @@ export default {
 		console.log(`[请求] ${request.method} ${path}`);
 
 		try {
+			// API 路由（预留给前后端分离的前端调用）
+			if (path.startsWith('/api/')) {
+				// 处理预检请求
+				if (request.method === 'OPTIONS') {
+					return handleApiOptions(request, env);
+				}
+
+				if (path === '/api/me' && request.method === 'GET') {
+					return handleApiMe(request, env);
+				}
+
+				return handleApiNotFound(request, env);
+			}
+
 			// 根路径 - 显示登录页面或用户信息
 			if (path === '/') {
 				return handleIndex(request, env);
@@ -231,10 +250,17 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		// 清除 state cookie
 		const clearStateCookie = 'oauth_state=; Path=/; Max-Age=0';
 
-		console.log(`[Callback] 登录成功，重定向到首页`);
-		// 重定向到首页
+		console.log(`[Callback] 登录成功，准备重定向到前端页面`);
+
+		// 计算登录成功后重定向目标：
+		// 1. 如果配置了 FRONTEND_URL，则优先重定向到前端根路径
+		// 2. 否则退回到当前 Worker 的根路径（兼容旧行为）
+		const targetUrl = env.FRONTEND_URL || '/';
+		console.log(`[Callback] 重定向目标: ${targetUrl}`);
+
+		// 重定向到前端 / 首页
 		const headers = new Headers();
-		headers.set('Location', '/');
+		headers.set('Location', targetUrl);
 		// 注意：Set-Cookie 不能用逗号拼接，需要多次 append
 		headers.append('Set-Cookie', sessionCookie);
 		headers.append('Set-Cookie', clearStateCookie);
@@ -269,5 +295,148 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 			'Set-Cookie': clearCookie,
 		},
 	});
+}
+
+/**
+ * API: 返回当前登录用户信息（给前端 Pages 使用）
+ */
+async function handleApiMe(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/me 请求');
+
+	const session = getSessionFromRequest(request);
+
+	if (!session) {
+		console.log('[API] /api/me 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				authenticated: false,
+				user: null,
+			},
+			200
+		);
+	}
+
+	// 从数据库获取完整用户信息
+	const user = await getUserById(env.DB, session.userId);
+	if (!user) {
+		console.warn(`[API] /api/me 会话存在但数据库未找到用户: ${session.userId}`);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				authenticated: false,
+				user: null,
+			},
+			200
+		);
+	}
+
+	console.log(`[API] /api/me 返回用户信息: ${user.email}`);
+	return jsonWithCors(
+		request,
+		env,
+		{
+			authenticated: true,
+			user: {
+				id: user.id,
+				email: user.email,
+				name: user.name,
+				picture: user.picture ?? null,
+			},
+		},
+		200
+	);
+}
+
+/**
+ * API: 处理不存在的 API 路由
+ */
+function handleApiNotFound(request: Request, env: Env): Response {
+	console.warn(`[API] 未知 API 路由: ${request.method} ${new URL(request.url).pathname}`);
+	return jsonWithCors(
+		request,
+		env,
+		{
+			error: 'Not Found',
+			path: new URL(request.url).pathname,
+		},
+		404
+	);
+}
+
+/**
+ * API: 处理 CORS 预检请求
+ */
+function handleApiOptions(request: Request, env: Env): Response {
+	console.log('[API] 处理 CORS 预检请求');
+	const headers = getCorsHeaders(request, env);
+	return new Response(null, {
+		status: 204,
+		headers,
+	});
+}
+
+/**
+ * 带 CORS 的 JSON 响应工具函数
+ */
+function jsonWithCors(
+	request: Request,
+	env: Env,
+	data: unknown,
+	status: number
+): Response {
+	const headers = getCorsHeaders(request, env);
+	headers.set('Content-Type', 'application/json; charset=utf-8');
+	return new Response(JSON.stringify(data), {
+		status,
+		headers,
+	});
+}
+
+/**
+ * 计算 CORS 头
+ */
+function getCorsHeaders(request: Request, env: Env): Headers {
+	const headers = new Headers();
+
+	const origin = request.headers.get('Origin');
+	let allowedOrigin: string | null = null;
+
+	// 如果配置了前端地址，则只允许该地址
+	if (env.FRONTEND_URL) {
+		try {
+			const frontendOrigin = new URL(env.FRONTEND_URL).origin;
+			if (origin && origin === frontendOrigin) {
+				allowedOrigin = origin;
+			}
+		} catch (error) {
+			console.error('[CORS] 解析 FRONTEND_URL 失败:', error);
+		}
+	} else {
+		// 未配置时，默认只允许同源请求
+		const selfOrigin = new URL(request.url).origin;
+		if (origin && origin === selfOrigin) {
+			allowedOrigin = origin;
+		}
+	}
+
+	if (allowedOrigin) {
+		headers.set('Access-Control-Allow-Origin', allowedOrigin);
+		headers.set('Vary', 'Origin');
+		headers.set('Access-Control-Allow-Credentials', 'true');
+	}
+
+	headers.set(
+		'Access-Control-Allow-Headers',
+		request.headers.get('Access-Control-Request-Headers') || 'Content-Type, Authorization'
+	);
+	headers.set(
+		'Access-Control-Allow-Methods',
+		'GET,HEAD,POST,PUT,DELETE,OPTIONS'
+	);
+
+	return headers;
 }
 

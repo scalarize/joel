@@ -66,6 +66,9 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 GOOGLE_CLIENT_ID=你的Google客户端ID
 GOOGLE_CLIENT_SECRET=你的Google客户端密钥
 BASE_URL=http://localhost:8787
+# 可选：如果你使用 Cloudflare Pages 作为前端，这里可以配置前端地址
+# 例如：https://joel-pages.example.com
+FRONTEND_URL=http://localhost:8787
 ```
 
 #### 生产环境
