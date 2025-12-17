@@ -1,3 +1,5 @@
+/// <reference types="../worker-configuration.d.ts" />
+
 export interface Env {
 	DB: D1Database;
 	BACKUP_BUCKET: R2Bucket;
@@ -178,7 +180,21 @@ export default {
 			console.log('[Backup] 正在压缩备份...');
 			const compressedDump = await compressData(dump);
 			const compressedSizeMB = (compressedDump.byteLength / (1024 * 1024)).toFixed(2);
-			const compressionRatio = ((1 - compressedDump.byteLength / dump.byteLength) * 100).toFixed(1);
+
+			// 计算压缩率（添加边界检查，避免除零错误）
+			let compressionRatio: string;
+			if (dump.byteLength === 0) {
+				// 原始大小为 0，压缩率无意义
+				compressionRatio = '0.0';
+			} else if (compressedDump.byteLength >= dump.byteLength) {
+				// 压缩后大小 >= 原始大小，表示"膨胀"了
+				const ratio = (compressedDump.byteLength / dump.byteLength - 1) * 100;
+				compressionRatio = `+${ratio.toFixed(1)}`; // 正数表示膨胀百分比
+			} else {
+				// 正常压缩，计算压缩率
+				const ratio = (1 - compressedDump.byteLength / dump.byteLength) * 100;
+				compressionRatio = ratio.toFixed(1);
+			}
 			console.log(`[Backup] 压缩完成，压缩后大小: ${compressedSizeMB} MB (压缩率: ${compressionRatio}%)`);
 
 			// 4. 将压缩后的 SQL 转储上传到 R2 存储桶
