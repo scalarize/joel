@@ -179,6 +179,7 @@ function Dashboard() {
 			description: '管理显示名称和头像',
 			url: '/profile',
 			icon: '👤',
+			external: false,
 		},
 		{
 			id: 'favor',
@@ -186,13 +187,15 @@ function Dashboard() {
 			description: '收藏和管理常用链接',
 			url: '/favor',
 			icon: '🔖',
+			external: false,
 		},
 		{
 			id: 'gd',
 			title: 'GD 开发',
 			description: 'GD 相关开发工具和资源',
-			url: '/gd',
+			url: 'http://scalarize.cn/gd',
 			icon: '⚙️',
+			external: true,
 		},
 		{
 			id: 'admin',
@@ -200,6 +203,7 @@ function Dashboard() {
 			description: '系统配置和管理入口',
 			url: '/admin',
 			icon: '⚙️',
+			external: false,
 		},
 	];
 
@@ -208,7 +212,13 @@ function Dashboard() {
 			<h2 className="dashboard-title">功能工作台</h2>
 			<div className="modules-grid">
 				{modules.map((module) => (
-					<a key={module.id} href={module.url} className="module-card">
+					<a
+						key={module.id}
+						href={module.url}
+						className="module-card"
+						target={module.external ? '_blank' : undefined}
+						rel={module.external ? 'noopener noreferrer' : undefined}
+					>
 						<div className="module-icon">{module.icon}</div>
 						<h3 className="module-title">{module.title}</h3>
 						<p className="module-description">{module.description}</p>
