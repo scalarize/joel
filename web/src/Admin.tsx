@@ -204,7 +204,7 @@ export default function Admin() {
 									<CartesianGrid strokeDasharray="3 3" />
 									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
 									<YAxis tick={{ fontSize: 12 }} />
-									<Tooltip formatter={(value: number) => formatNumber(value)} />
+									<Tooltip formatter={(value) => formatNumber(Number(value) || 0)} />
 									<Legend />
 									<Line type="monotone" dataKey="读取" stroke="#8884d8" dot={false} />
 									<Line type="monotone" dataKey="写入" stroke="#82ca9d" dot={false} />
@@ -224,7 +224,7 @@ export default function Admin() {
 									<CartesianGrid strokeDasharray="3 3" />
 									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
 									<YAxis tick={{ fontSize: 12 }} />
-									<Tooltip formatter={(value: number) => formatMs(value)} />
+									<Tooltip formatter={(value) => formatMs(Number(value) || 0)} />
 									<Legend />
 									<Line type="monotone" dataKey="耗时" stroke="#ff7300" dot={false} />
 								</LineChart>
@@ -247,7 +247,7 @@ export default function Admin() {
 							<h4>请求数 & 响应流量</h4>
 							<ResponsiveContainer width="100%" height={250}>
 								<LineChart
-									data={metrics.r2.requests.map((item, index) => ({
+									data={metrics.r2.requests.map((item) => ({
 										date: item.date,
 										请求数: item.value,
 									}))}
@@ -256,7 +256,7 @@ export default function Admin() {
 									<CartesianGrid strokeDasharray="3 3" />
 									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
 									<YAxis tick={{ fontSize: 12 }} />
-									<Tooltip formatter={(value: number) => formatNumber(value)} />
+									<Tooltip formatter={(value) => formatNumber(Number(value) || 0)} />
 									<Legend />
 									<Line type="monotone" dataKey="请求数" stroke="#8884d8" dot={false} />
 								</LineChart>
@@ -277,7 +277,9 @@ export default function Admin() {
 									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
 									<YAxis yAxisId="left" tick={{ fontSize: 12 }} />
 									<YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
-									<Tooltip formatter={(value: number, name: string) => (name === '存储大小' ? formatBytes(value) : formatNumber(value))} />
+									<Tooltip
+										formatter={(value, name) => (name === '存储大小' ? formatBytes(Number(value) || 0) : formatNumber(Number(value) || 0))}
+									/>
 									<Legend />
 									<Line yAxisId="left" type="monotone" dataKey="存储大小" stroke="#82ca9d" dot={false} />
 									<Line yAxisId="right" type="monotone" dataKey="对象数" stroke="#ff7300" dot={false} />
@@ -309,7 +311,7 @@ export default function Admin() {
 									<CartesianGrid strokeDasharray="3 3" />
 									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
 									<YAxis tick={{ fontSize: 12 }} />
-									<Tooltip formatter={(value: number) => formatNumber(value)} />
+									<Tooltip formatter={(value) => formatNumber(Number(value) || 0)} />
 									<Legend />
 									<Line type="monotone" dataKey="请求" stroke="#8884d8" dot={false} />
 									<Line type="monotone" dataKey="子请求" stroke="#82ca9d" dot={false} />
