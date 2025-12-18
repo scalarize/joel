@@ -1,25 +1,32 @@
 /**
  * 管理员后台 - Cloudflare 用量仪表盘
+ * 支持按日期范围查看折线图
  */
 
 import { useEffect, useState } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Admin.css';
+
+interface DateDataPoint {
+	date: string;
+	value: number;
+}
 
 interface UsageMetrics {
 	d1: {
-		queries: number;
-		rowsRead: number;
-		rowsWritten: number;
-		storageBytes: number;
+		rowsRead: DateDataPoint[];
+		rowsWritten: DateDataPoint[];
+		queryDurationMs: DateDataPoint[];
 	};
 	r2: {
-		storageBytes: number;
-		classAOperations: number;
-		classBOperations: number;
+		requests: DateDataPoint[];
+		responseBytes: DateDataPoint[];
+		objectCount: DateDataPoint[];
+		payloadSize: DateDataPoint[];
 	};
 	workers: {
-		requests: number;
-		cpuTimeMs: number;
+		requests: DateDataPoint[];
+		subrequests: DateDataPoint[];
 	};
 }
 
@@ -29,8 +36,15 @@ export default function Admin() {
 	const [error, setError] = useState<string | null>(null);
 	const [unauthorized, setUnauthorized] = useState(false);
 
+	// 日期范围状态（默认最近30天）
+	const today = new Date().toISOString().split('T')[0];
+	const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+	const [startDate, setStartDate] = useState(thirtyDaysAgo);
+	const [endDate, setEndDate] = useState(today);
+
 	useEffect(() => {
 		loadMetrics();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	const loadMetrics = async () => {
@@ -39,7 +53,12 @@ export default function Admin() {
 			setError(null);
 			setUnauthorized(false);
 
-			const response = await fetch('/api/admin/analytics', {
+			const params = new URLSearchParams({
+				startDate,
+				endDate,
+			});
+
+			const response = await fetch(`/api/admin/analytics?${params}`, {
 				credentials: 'include',
 			});
 
@@ -77,10 +96,21 @@ export default function Admin() {
 		return num.toLocaleString('zh-CN');
 	};
 
-	// 格式化 CPU 时间（毫秒转秒）
-	const formatCpuTime = (ms: number): string => {
+	// 格式化毫秒
+	const formatMs = (ms: number): string => {
 		if (ms < 1000) return `${ms.toFixed(0)} ms`;
 		return `${(ms / 1000).toFixed(2)} s`;
+	};
+
+	// 计算总和
+	const sumValues = (data: DateDataPoint[]): number => {
+		return data.reduce((acc, item) => acc + item.value, 0);
+	};
+
+	// 获取最大值
+	const maxValue = (data: DateDataPoint[]): number => {
+		if (data.length === 0) return 0;
+		return Math.max(...data.map((item) => item.value));
 	};
 
 	if (unauthorized) {
@@ -133,65 +163,158 @@ export default function Admin() {
 		<div className="admin-container">
 			<div className="admin-header">
 				<h2>Cloudflare 用量仪表盘</h2>
-				<button onClick={loadMetrics} className="admin-refresh-btn">
-					刷新
-				</button>
+				<div className="admin-controls">
+					<div className="date-picker">
+						<label>
+							开始日期：
+							<input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+						</label>
+						<label>
+							结束日期：
+							<input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+						</label>
+					</div>
+					<button onClick={loadMetrics} className="admin-refresh-btn">
+						查询
+					</button>
+				</div>
 			</div>
 
-			<div className="admin-metrics">
-				{/* D1 数据库用量 */}
-				<div className="admin-metric-card">
-					<h3 className="admin-metric-title">📊 D1 数据库</h3>
-					<div className="admin-metric-content">
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">查询次数</span>
-							<span className="admin-metric-value">{formatNumber(metrics.d1.queries)}</span>
+			<div className="admin-charts">
+				{/* D1 数据库 */}
+				<div className="admin-chart-section">
+					<h3>📊 D1 数据库</h3>
+					<div className="admin-chart-summary">
+						<span>读取行数: {formatNumber(sumValues(metrics.d1.rowsRead))}</span>
+						<span>写入行数: {formatNumber(sumValues(metrics.d1.rowsWritten))}</span>
+						<span>查询耗时: {formatMs(sumValues(metrics.d1.queryDurationMs))}</span>
+					</div>
+					<div className="admin-chart-grid">
+						<div className="admin-chart-card">
+							<h4>行读写统计</h4>
+							<ResponsiveContainer width="100%" height={250}>
+								<LineChart
+									data={metrics.d1.rowsRead.map((item, index) => ({
+										date: item.date,
+										读取: item.value,
+										写入: metrics.d1.rowsWritten[index]?.value || 0,
+									}))}
+									margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
+									<YAxis tick={{ fontSize: 12 }} />
+									<Tooltip formatter={(value: number) => formatNumber(value)} />
+									<Legend />
+									<Line type="monotone" dataKey="读取" stroke="#8884d8" dot={false} />
+									<Line type="monotone" dataKey="写入" stroke="#82ca9d" dot={false} />
+								</LineChart>
+							</ResponsiveContainer>
 						</div>
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">读取行数</span>
-							<span className="admin-metric-value">{formatNumber(metrics.d1.rowsRead)}</span>
-						</div>
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">写入行数</span>
-							<span className="admin-metric-value">{formatNumber(metrics.d1.rowsWritten)}</span>
-						</div>
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">存储容量</span>
-							<span className="admin-metric-value">{formatBytes(metrics.d1.storageBytes)}</span>
+						<div className="admin-chart-card">
+							<h4>查询耗时 (ms)</h4>
+							<ResponsiveContainer width="100%" height={250}>
+								<LineChart
+									data={metrics.d1.queryDurationMs.map((item) => ({
+										date: item.date,
+										耗时: item.value,
+									}))}
+									margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
+									<YAxis tick={{ fontSize: 12 }} />
+									<Tooltip formatter={(value: number) => formatMs(value)} />
+									<Legend />
+									<Line type="monotone" dataKey="耗时" stroke="#ff7300" dot={false} />
+								</LineChart>
+							</ResponsiveContainer>
 						</div>
 					</div>
 				</div>
 
-				{/* R2 存储用量 */}
-				<div className="admin-metric-card">
-					<h3 className="admin-metric-title">💾 R2 存储</h3>
-					<div className="admin-metric-content">
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">存储容量</span>
-							<span className="admin-metric-value">{formatBytes(metrics.r2.storageBytes)}</span>
+				{/* R2 存储 */}
+				<div className="admin-chart-section">
+					<h3>💾 R2 存储</h3>
+					<div className="admin-chart-summary">
+						<span>总请求数: {formatNumber(sumValues(metrics.r2.requests))}</span>
+						<span>响应流量: {formatBytes(sumValues(metrics.r2.responseBytes))}</span>
+						<span>最大对象数: {formatNumber(maxValue(metrics.r2.objectCount))}</span>
+						<span>最大存储: {formatBytes(maxValue(metrics.r2.payloadSize))}</span>
+					</div>
+					<div className="admin-chart-grid">
+						<div className="admin-chart-card">
+							<h4>请求数 & 响应流量</h4>
+							<ResponsiveContainer width="100%" height={250}>
+								<LineChart
+									data={metrics.r2.requests.map((item, index) => ({
+										date: item.date,
+										请求数: item.value,
+									}))}
+									margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
+									<YAxis tick={{ fontSize: 12 }} />
+									<Tooltip formatter={(value: number) => formatNumber(value)} />
+									<Legend />
+									<Line type="monotone" dataKey="请求数" stroke="#8884d8" dot={false} />
+								</LineChart>
+							</ResponsiveContainer>
 						</div>
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">A类操作（写入）</span>
-							<span className="admin-metric-value">{formatNumber(metrics.r2.classAOperations)}</span>
-						</div>
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">B类操作（读取）</span>
-							<span className="admin-metric-value">{formatNumber(metrics.r2.classBOperations)}</span>
+						<div className="admin-chart-card">
+							<h4>存储容量趋势</h4>
+							<ResponsiveContainer width="100%" height={250}>
+								<LineChart
+									data={metrics.r2.payloadSize.map((item, index) => ({
+										date: item.date,
+										存储大小: item.value,
+										对象数: metrics.r2.objectCount[index]?.value || 0,
+									}))}
+									margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
+									<YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+									<YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
+									<Tooltip formatter={(value: number, name: string) => (name === '存储大小' ? formatBytes(value) : formatNumber(value))} />
+									<Legend />
+									<Line yAxisId="left" type="monotone" dataKey="存储大小" stroke="#82ca9d" dot={false} />
+									<Line yAxisId="right" type="monotone" dataKey="对象数" stroke="#ff7300" dot={false} />
+								</LineChart>
+							</ResponsiveContainer>
 						</div>
 					</div>
 				</div>
 
-				{/* Workers 用量 */}
-				<div className="admin-metric-card">
-					<h3 className="admin-metric-title">⚡ Workers</h3>
-					<div className="admin-metric-content">
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">请求数量</span>
-							<span className="admin-metric-value">{formatNumber(metrics.workers.requests)}</span>
-						</div>
-						<div className="admin-metric-item">
-							<span className="admin-metric-label">CPU 执行时间</span>
-							<span className="admin-metric-value">{formatCpuTime(metrics.workers.cpuTimeMs)}</span>
+				{/* Workers */}
+				<div className="admin-chart-section">
+					<h3>⚡ Workers</h3>
+					<div className="admin-chart-summary">
+						<span>总请求数: {formatNumber(sumValues(metrics.workers.requests))}</span>
+						<span>总子请求数: {formatNumber(sumValues(metrics.workers.subrequests))}</span>
+					</div>
+					<div className="admin-chart-grid">
+						<div className="admin-chart-card admin-chart-full">
+							<h4>请求统计</h4>
+							<ResponsiveContainer width="100%" height={250}>
+								<LineChart
+									data={metrics.workers.requests.map((item, index) => ({
+										date: item.date,
+										请求: item.value,
+										子请求: metrics.workers.subrequests[index]?.value || 0,
+									}))}
+									margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
+									<YAxis tick={{ fontSize: 12 }} />
+									<Tooltip formatter={(value: number) => formatNumber(value)} />
+									<Legend />
+									<Line type="monotone" dataKey="请求" stroke="#8884d8" dot={false} />
+									<Line type="monotone" dataKey="子请求" stroke="#82ca9d" dot={false} />
+								</LineChart>
+							</ResponsiveContainer>
 						</div>
 					</div>
 				</div>
@@ -199,4 +322,3 @@ export default function Admin() {
 		</div>
 	);
 }
-

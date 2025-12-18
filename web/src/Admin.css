@@ -1,13 +1,15 @@
 .admin-container {
-	max-width: 1200px;
+	max-width: 1400px;
 	margin: 0 auto;
-	padding: 2rem;
+	padding: 1.5rem;
 }
 
 .admin-header {
 	display: flex;
 	justify-content: space-between;
-	align-items: center;
+	align-items: flex-start;
+	flex-wrap: wrap;
+	gap: 1rem;
 	margin-bottom: 2rem;
 }
 
@@ -17,9 +19,38 @@
 	color: #333;
 }
 
+.admin-controls {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	flex-wrap: wrap;
+}
+
+.date-picker {
+	display: flex;
+	gap: 1rem;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.date-picker label {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.9rem;
+	color: #666;
+}
+
+.date-picker input[type='date'] {
+	padding: 0.4rem 0.6rem;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	font-size: 0.9rem;
+}
+
 .admin-refresh-btn,
 .admin-retry-btn {
-	padding: 0.5rem 1rem;
+	padding: 0.5rem 1.2rem;
 	background-color: #007bff;
 	color: white;
 	border: none;
@@ -61,21 +92,22 @@
 	margin-top: 0.5rem;
 }
 
-.admin-metrics {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-	gap: 1.5rem;
+/* 图表区域 */
+.admin-charts {
+	display: flex;
+	flex-direction: column;
+	gap: 2rem;
 }
 
-.admin-metric-card {
+.admin-chart-section {
 	background: white;
 	border: 1px solid #e0e0e0;
 	border-radius: 8px;
 	padding: 1.5rem;
-	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.admin-metric-title {
+.admin-chart-section h3 {
 	margin: 0 0 1rem 0;
 	font-size: 1.3rem;
 	color: #333;
@@ -83,32 +115,66 @@
 	padding-bottom: 0.5rem;
 }
 
-.admin-metric-content {
+.admin-chart-summary {
 	display: flex;
-	flex-direction: column;
-	gap: 1rem;
-}
-
-.admin-metric-item {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 0.75rem;
+	flex-wrap: wrap;
+	gap: 1.5rem;
+	margin-bottom: 1rem;
+	padding: 0.75rem 1rem;
 	background-color: #f8f9fa;
 	border-radius: 4px;
 }
 
-.admin-metric-label {
+.admin-chart-summary span {
 	font-size: 0.95rem;
-	color: #666;
+	color: #555;
+}
+
+.admin-chart-summary span::before {
+	content: '•';
+	margin-right: 0.5rem;
+	color: #007bff;
+}
+
+.admin-chart-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+	gap: 1.5rem;
+}
+
+.admin-chart-card {
+	background: #fafafa;
+	border: 1px solid #eee;
+	border-radius: 6px;
+	padding: 1rem;
+}
+
+.admin-chart-card.admin-chart-full {
+	grid-column: 1 / -1;
+}
+
+.admin-chart-card h4 {
+	margin: 0 0 0.75rem 0;
+	font-size: 1rem;
+	color: #555;
 	font-weight: 500;
 }
 
-.admin-metric-value {
-	font-size: 1.1rem;
-	color: #333;
-	font-weight: 600;
-	font-family: 'Courier New', monospace;
+/* Recharts 自定义样式 */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+	stroke: #eee;
+}
+
+.recharts-tooltip-wrapper {
+	outline: none;
+}
+
+.recharts-default-tooltip {
+	background-color: rgba(255, 255, 255, 0.95) !important;
+	border: 1px solid #ddd !important;
+	border-radius: 4px !important;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
 }
 
 /* 移动端适配 */
@@ -119,26 +185,43 @@
 
 	.admin-header {
 		flex-direction: column;
-		align-items: flex-start;
-		gap: 1rem;
+		align-items: stretch;
 	}
 
-	.admin-metrics {
-		grid-template-columns: 1fr;
-	}
-
-	.admin-metric-card {
-		padding: 1rem;
-	}
-
-	.admin-metric-item {
+	.admin-controls {
 		flex-direction: column;
-		align-items: flex-start;
+		align-items: stretch;
+	}
+
+	.date-picker {
+		flex-direction: column;
 		gap: 0.5rem;
 	}
 
-	.admin-metric-value {
-		font-size: 1rem;
+	.date-picker label {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.25rem;
+	}
+
+	.date-picker input[type='date'] {
+		width: 100%;
+	}
+
+	.admin-refresh-btn {
+		width: 100%;
+	}
+
+	.admin-chart-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.admin-chart-summary {
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.admin-chart-card {
+		padding: 0.75rem;
 	}
 }
-

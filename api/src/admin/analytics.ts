@@ -1,42 +1,41 @@
 /**
  * Cloudflare Analytics API 调用
- * 用于获取 D1、R2、Workers 的用量数据
+ * 用于获取 D1、R2、Workers 的用量数据（按日期分组）
  */
 
+// GraphQL 响应类型定义
 interface CloudflareAnalyticsResponse {
 	data?: {
 		viewer?: {
 			accounts?: Array<{
 				d1Queries?: Array<{
+					dimensions?: { date?: string };
 					sum?: {
-						readQueries?: number;
-						writeQueries?: number;
 						rowsRead?: number;
 						rowsWritten?: number;
+						queryDurationMs?: number;
 					};
 				}>;
-				d1Storage?: Array<{
-					sum?: {
-						bytesStored?: number;
-					};
-				}>;
-				r2Operations?: Array<{
-					dimensions?: {
-						actionType?: string;
-					};
+				r2Operation?: Array<{
+					dimensions?: { date?: string };
 					sum?: {
 						requests?: number;
+						responseBytes?: number;
 					};
 				}>;
 				r2Storage?: Array<{
-					sum?: {
-						bytesStored?: number;
+					dimensions?: { date?: string };
+					max?: {
+						objectCount?: number;
+						uploadCount?: number;
+						payloadSize?: number;
 					};
 				}>;
-				workersInvocations?: Array<{
+				worker?: Array<{
+					dimensions?: { date?: string };
 					sum?: {
 						requests?: number;
-						cpuTime?: number;
+						subrequests?: number;
 					};
 				}>;
 			}>;
@@ -47,42 +46,40 @@ interface CloudflareAnalyticsResponse {
 	}>;
 }
 
+// 按日期分组的数据点
+export interface DateDataPoint {
+	date: string; // YYYY-MM-DD 格式
+	value: number;
+}
+
+// 用量指标数据结构（按日期分组，用于折线图）
 export interface UsageMetrics {
 	d1: {
-		queries: number;
-		rowsRead: number;
-		rowsWritten: number;
-		storageBytes: number;
+		rowsRead: DateDataPoint[];
+		rowsWritten: DateDataPoint[];
+		queryDurationMs: DateDataPoint[];
 	};
 	r2: {
-		storageBytes: number;
-		classAOperations: number; // 写入操作
-		classBOperations: number; // 读取操作
+		requests: DateDataPoint[];
+		responseBytes: DateDataPoint[];
+		objectCount: DateDataPoint[];
+		payloadSize: DateDataPoint[];
 	};
 	workers: {
-		requests: number;
-		cpuTimeMs: number;
+		requests: DateDataPoint[];
+		subrequests: DateDataPoint[];
 	};
 }
 
 /**
- * 获取 Cloudflare 用量数据
+ * 获取 Cloudflare 用量数据（按日期分组）
  * @param accountId Cloudflare 账户 ID
  * @param apiToken Cloudflare API Token
- * @param startTime 开始时间（ISO 8601 格式）
- * @param endTime 结束时间（ISO 8601 格式）
+ * @param startDate 开始日期（YYYY-MM-DD 格式）
+ * @param endDate 结束日期（YYYY-MM-DD 格式）
  */
-export async function getCloudflareUsage(
-	accountId: string,
-	apiToken: string,
-	startTime: string,
-	endTime: string
-): Promise<UsageMetrics> {
-	console.log(`[Analytics] 获取 Cloudflare 用量数据: ${accountId}`);
-
-	// 将 ISO 8601 时间戳转换为日期格式 (YYYY-MM-DD)
-	const startDate = new Date(startTime).toISOString().split('T')[0];
-	const endDate = new Date(endTime).toISOString().split('T')[0];
+export async function getCloudflareUsage(accountId: string, apiToken: string, startDate: string, endDate: string): Promise<UsageMetrics> {
+	console.log(`[Analytics] 获取 Cloudflare 用量数据: ${accountId}, 日期范围: ${startDate} ~ ${endDate}`);
 
 	const graphqlQuery = `query GetUsage($accountId: String!, $startDate: Date!, $endDate: Date!) {
   viewer {
@@ -91,47 +88,42 @@ export async function getCloudflareUsage(
         filter: { date_geq: $startDate, date_leq: $endDate }
         limit: 10000
       ) {
+        dimensions { date }
         sum {
-          readQueries
-          writeQueries
           rowsRead
           rowsWritten
+          queryDurationMs
         }
       }
-      d1Storage: d1StorageAdaptiveGroups(
+      r2Operation: r2OperationsAdaptiveGroups(
         filter: { date_geq: $startDate, date_leq: $endDate }
         limit: 10000
       ) {
-        sum {
-          bytesStored
-        }
-      }
-      r2Operations: r2OperationsAdaptiveGroups(
-        filter: { date_geq: $startDate, date_leq: $endDate }
-        limit: 10000
-      ) {
-        dimensions {
-          actionType
-        }
+        dimensions { date }
         sum {
           requests
+          responseBytes
         }
       }
       r2Storage: r2StorageAdaptiveGroups(
         filter: { date_geq: $startDate, date_leq: $endDate }
         limit: 10000
       ) {
-        sum {
-          bytesStored
+        dimensions { date }
+        max {
+          objectCount
+          uploadCount
+          payloadSize
         }
       }
-      workersInvocations: workersInvocationsAdaptiveGroups(
+      worker: workersInvocationsAdaptive(
         filter: { date_geq: $startDate, date_leq: $endDate }
         limit: 10000
       ) {
+        dimensions { date }
         sum {
           requests
-          cpuTime
+          subrequests
         }
       }
     }
@@ -174,79 +166,87 @@ export async function getCloudflareUsage(
 			return getEmptyMetrics();
 		}
 
-		// 聚合 D1 查询数据
+		// 处理 D1 数据
 		const d1Queries = account.d1Queries || [];
-		const d1QueriesSum = d1Queries.reduce(
-			(acc, group) => {
-				const sum = group.sum || {};
-				return {
-					readQueries: (acc.readQueries || 0) + (sum.readQueries || 0),
-					writeQueries: (acc.writeQueries || 0) + (sum.writeQueries || 0),
-					rowsRead: (acc.rowsRead || 0) + (sum.rowsRead || 0),
-					rowsWritten: (acc.rowsWritten || 0) + (sum.rowsWritten || 0),
-				};
-			},
-			{ readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 }
-		);
+		const d1RowsRead: DateDataPoint[] = [];
+		const d1RowsWritten: DateDataPoint[] = [];
+		const d1QueryDurationMs: DateDataPoint[] = [];
 
-		// 聚合 D1 存储数据
-		const d1Storage = account.d1Storage || [];
-		const d1StorageSum = d1Storage.reduce(
-			(acc, group) => (acc + (group.sum?.bytesStored || 0)),
-			0
-		);
-
-		// 聚合 R2 操作数据（A类：写入，B类：读取）
-		const r2Operations = account.r2Operations || [];
-		let classAOperations = 0;
-		let classBOperations = 0;
-		for (const group of r2Operations) {
-			const actionType = group.dimensions?.actionType || '';
-			const requests = group.sum?.requests || 0;
-			// A类操作：PutObject, CreateMultipartUpload, UploadPart, CompleteMultipartUpload, CopyObject, ListMultipartUploads
-			if (actionType.includes('Put') || actionType.includes('Create') || actionType.includes('Upload') || actionType.includes('Copy')) {
-				classAOperations += requests;
-			} else {
-				// B类操作：GetObject, HeadObject, ListObjects, ListObjectsV2, ListBucket, GetBucketLocation
-				classBOperations += requests;
+		for (const item of d1Queries) {
+			const date = item.dimensions?.date || '';
+			if (date) {
+				d1RowsRead.push({ date, value: item.sum?.rowsRead || 0 });
+				d1RowsWritten.push({ date, value: item.sum?.rowsWritten || 0 });
+				d1QueryDurationMs.push({ date, value: item.sum?.queryDurationMs || 0 });
 			}
 		}
 
-		// 聚合 R2 存储数据
-		const r2Storage = account.r2Storage || [];
-		const r2StorageSum = r2Storage.reduce(
-			(acc, group) => (acc + (group.sum?.bytesStored || 0)),
-			0
-		);
+		// 处理 R2 操作数据
+		const r2Operation = account.r2Operation || [];
+		const r2Requests: DateDataPoint[] = [];
+		const r2ResponseBytes: DateDataPoint[] = [];
 
-		// 聚合 Workers 调用数据
-		const workersInvocations = account.workersInvocations || [];
-		const workersSum = workersInvocations.reduce(
-			(acc, group) => {
-				const sum = group.sum || {};
-				return {
-					requests: (acc.requests || 0) + (sum.requests || 0),
-					cpuTime: (acc.cpuTime || 0) + (sum.cpuTime || 0),
-				};
-			},
-			{ requests: 0, cpuTime: 0 }
-		);
+		for (const item of r2Operation) {
+			const date = item.dimensions?.date || '';
+			if (date) {
+				r2Requests.push({ date, value: item.sum?.requests || 0 });
+				r2ResponseBytes.push({ date, value: item.sum?.responseBytes || 0 });
+			}
+		}
+
+		// 处理 R2 存储数据
+		const r2Storage = account.r2Storage || [];
+		const r2ObjectCount: DateDataPoint[] = [];
+		const r2PayloadSize: DateDataPoint[] = [];
+
+		for (const item of r2Storage) {
+			const date = item.dimensions?.date || '';
+			if (date) {
+				r2ObjectCount.push({ date, value: item.max?.objectCount || 0 });
+				r2PayloadSize.push({ date, value: item.max?.payloadSize || 0 });
+			}
+		}
+
+		// 处理 Workers 数据
+		const worker = account.worker || [];
+		const workerRequests: DateDataPoint[] = [];
+		const workerSubrequests: DateDataPoint[] = [];
+
+		for (const item of worker) {
+			const date = item.dimensions?.date || '';
+			if (date) {
+				workerRequests.push({ date, value: item.sum?.requests || 0 });
+				workerSubrequests.push({ date, value: item.sum?.subrequests || 0 });
+			}
+		}
+
+		// 按日期排序
+		const sortByDate = (a: DateDataPoint, b: DateDataPoint) => a.date.localeCompare(b.date);
+		d1RowsRead.sort(sortByDate);
+		d1RowsWritten.sort(sortByDate);
+		d1QueryDurationMs.sort(sortByDate);
+		r2Requests.sort(sortByDate);
+		r2ResponseBytes.sort(sortByDate);
+		r2ObjectCount.sort(sortByDate);
+		r2PayloadSize.sort(sortByDate);
+		workerRequests.sort(sortByDate);
+		workerSubrequests.sort(sortByDate);
 
 		const metrics: UsageMetrics = {
 			d1: {
-				queries: (d1QueriesSum.readQueries || 0) + (d1QueriesSum.writeQueries || 0),
-				rowsRead: d1QueriesSum.rowsRead || 0,
-				rowsWritten: d1QueriesSum.rowsWritten || 0,
-				storageBytes: d1StorageSum,
+				rowsRead: d1RowsRead,
+				rowsWritten: d1RowsWritten,
+				queryDurationMs: d1QueryDurationMs,
 			},
 			r2: {
-				storageBytes: r2StorageSum,
-				classAOperations,
-				classBOperations,
+				requests: r2Requests,
+				responseBytes: r2ResponseBytes,
+				objectCount: r2ObjectCount,
+				payloadSize: r2PayloadSize,
 			},
 			workers: {
-				requests: workersSum.requests || 0,
-				cpuTimeMs: workersSum.cpuTime || 0,
+				requests: workerRequests,
+				subrequests: workerSubrequests,
 			},
 		};
 
@@ -264,20 +264,19 @@ export async function getCloudflareUsage(
 function getEmptyMetrics(): UsageMetrics {
 	return {
 		d1: {
-			queries: 0,
-			rowsRead: 0,
-			rowsWritten: 0,
-			storageBytes: 0,
+			rowsRead: [],
+			rowsWritten: [],
+			queryDurationMs: [],
 		},
 		r2: {
-			storageBytes: 0,
-			classAOperations: 0,
-			classBOperations: 0,
+			requests: [],
+			responseBytes: [],
+			objectCount: [],
+			payloadSize: [],
 		},
 		workers: {
-			requests: 0,
-			cpuTimeMs: 0,
+			requests: [],
+			subrequests: [],
 		},
 	};
 }
-

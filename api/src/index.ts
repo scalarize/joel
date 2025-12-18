@@ -782,27 +782,19 @@ async function handleAdminAnalytics(request: Request, env: Env): Promise<Respons
 		);
 	}
 
-	// 解析查询参数（时间范围）
+	// 解析查询参数（日期范围，格式：YYYY-MM-DD）
 	const url = new URL(request.url);
-	const startTime = url.searchParams.get('startTime') || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // 默认30天前
-	const endTime = url.searchParams.get('endTime') || new Date().toISOString(); // 默认现在
+	const today = new Date().toISOString().split('T')[0];
+	const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+	const startDate = url.searchParams.get('startDate') || thirtyDaysAgo; // 默认30天前
+	const endDate = url.searchParams.get('endDate') || today; // 默认今天
 
 	try {
-		console.log(`[API] /api/admin/analytics 获取用量数据: ${startTime} 到 ${endTime}`);
-		const metrics = await getCloudflareUsage(
-			env.CF_ACCOUNT_ID,
-			env.CF_API_TOKEN,
-			startTime,
-			endTime
-		);
+		console.log(`[API] /api/admin/analytics 获取用量数据: ${startDate} 到 ${endDate}`);
+		const metrics = await getCloudflareUsage(env.CF_ACCOUNT_ID, env.CF_API_TOKEN, startDate, endDate);
 
 		console.log(`[API] /api/admin/analytics 返回用量数据`);
-		return jsonWithCors(
-			request,
-			env,
-			metrics,
-			200
-		);
+		return jsonWithCors(request, env, metrics, 200);
 	} catch (error) {
 		console.error(`[API] /api/admin/analytics 获取用量数据失败:`, error);
 		return jsonWithCors(
