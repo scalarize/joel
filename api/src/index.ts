@@ -667,14 +667,33 @@ function handleApiPing(request: Request, env: Env): Response {
 /**
  * 获取请求的 host 信息
  * 判断是否为 cnHost（joel.scalarize.cn）
+ * 支持反向代理：优先从 X-Forwarded-Host 或 X-Original-Host 获取真实 host
  */
 function getHostInfo(request: Request): { host: string; isCnHost: boolean; domainSuffix: string } {
-	const url = new URL(request.url);
-	const host = url.hostname;
+	// 优先从反向代理的请求头获取真实 host
+	// X-Forwarded-Host 是常见的反向代理头部
+	// X-Original-Host 是 Cloudflare 等使用的头部
+	const forwardedHost = request.headers.get('X-Forwarded-Host') || request.headers.get('X-Original-Host') || request.headers.get('Host');
+
+	let host: string;
+	if (forwardedHost) {
+		// X-Forwarded-Host 可能包含端口，需要提取 hostname
+		host = forwardedHost.split(':')[0];
+	} else {
+		// 回退到从 URL 获取
+		const url = new URL(request.url);
+		host = url.hostname;
+	}
+
 	const isCnHost = host === 'joel.scalarize.cn';
 	const domainSuffix = isCnHost ? 'scalarize.cn' : 'scalarize.org';
 
 	console.log(`[Host] 检测到 host: ${host}, isCnHost: ${isCnHost}, domainSuffix: ${domainSuffix}`);
+	console.log(
+		`[Host] X-Forwarded-Host: ${request.headers.get('X-Forwarded-Host')}, X-Original-Host: ${request.headers.get(
+			'X-Original-Host'
+		)}, Host: ${request.headers.get('Host')}`
+	);
 
 	return { host, isCnHost, domainSuffix };
 }

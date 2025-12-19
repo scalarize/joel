@@ -56,6 +56,7 @@ function App() {
 		}
 
 		// 获取 host 信息
+		// 注意：前端无法直接获取反向代理的真实 host，必须通过后端 API
 		const loadHostInfo = async () => {
 			try {
 				const response = await fetch('/api/host-info', {
@@ -66,7 +67,8 @@ function App() {
 					setHostInfo(data);
 					console.log('[前端] Host 信息:', data);
 				} else {
-					// 如果 API 失败，从 window.location 推断
+					console.warn('[前端] 获取 host 信息失败，使用默认值');
+					// 如果 API 失败，从 window.location 推断（可能不准确，因为反向代理）
 					const host = window.location.hostname;
 					const isCnHost = host === 'joel.scalarize.cn';
 					setHostInfo({
@@ -77,7 +79,7 @@ function App() {
 				}
 			} catch (error) {
 				console.error('[前端] 获取 host 信息失败:', error);
-				// 失败时从 window.location 推断
+				// 失败时从 window.location 推断（可能不准确，因为反向代理）
 				const host = window.location.hostname;
 				const isCnHost = host === 'joel.scalarize.cn';
 				setHostInfo({
