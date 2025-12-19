@@ -1257,6 +1257,11 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 		if (origin.endsWith('.scalarize.org') || origin === 'https://scalarize.org') {
 			allowedOrigin = origin;
 		}
+		// 允许 scalarize.cn 的所有子域名（包括 joel.scalarize.cn 和 gd.scalarize.cn）
+		// 用于支持 gd.scalarize.cn 通过 JWT bearer token 访问 joel.scalarize.cn 的 API
+		else if (origin.endsWith('.scalarize.cn') || origin === 'https://scalarize.cn') {
+			allowedOrigin = origin;
+		}
 		// 开发环境：允许 localhost
 		else if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
 			allowedOrigin = origin;
