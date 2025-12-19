@@ -21,14 +21,51 @@ function App() {
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
+		const url = new URL(window.location.href);
+		
+		// 检查是否是退出后的重定向
+		const isLogout = url.searchParams.get('logout') === '1';
+		if (isLogout) {
+			console.log('[前端] 检测到退出后的重定向，清除 token 和用户状态');
+			// 立即清除 token 和用户状态
+			localStorage.removeItem('jwt_token');
+			setUser(null);
+			// 清除 URL 中的 logout 参数
+			url.searchParams.delete('logout');
+			window.history.replaceState({}, '', url.toString());
+			setLoading(false);
+			return;
+		}
+		
+		// 检查 URL 中是否有 token 参数（登录回调）
+		const token = url.searchParams.get('token');
+		if (token) {
+			console.log('[前端] 检测到 URL 中的 token，存储到 localStorage');
+			localStorage.setItem('jwt_token', token);
+			// 清除 URL 中的 token 参数
+			url.searchParams.delete('token');
+			window.history.replaceState({}, '', url.toString());
+		}
+		
 		checkAuth();
 	}, []);
 
 	const checkAuth = async () => {
 		try {
 			console.log('[前端] 开始检查登录状态');
+			// 从 localStorage 获取 token（如果有）
+			const token = localStorage.getItem('jwt_token');
+			const headers: HeadersInit = {
+				'Content-Type': 'application/json',
+			};
+			if (token) {
+				headers['Authorization'] = `Bearer ${token}`;
+				console.log('[前端] 使用 JWT token 进行认证');
+			}
+			
 			const response = await fetch('/api/me', {
 				credentials: 'include',
+				headers,
 			});
 
 			if (!response.ok) {
@@ -42,10 +79,17 @@ function App() {
 				setUser(data.user);
 			} else {
 				setUser(null);
+				// 如果未认证，清除 token
+				if (token) {
+					console.log('[前端] 认证失败，清除 token');
+					localStorage.removeItem('jwt_token');
+				}
 			}
 		} catch (error) {
 			console.error('[前端] 检查登录状态失败:', error);
 			setUser(null);
+			// 清除可能无效的 token
+			localStorage.removeItem('jwt_token');
 		} finally {
 			setLoading(false);
 		}
@@ -57,7 +101,13 @@ function App() {
 	};
 
 	const handleLogout = () => {
-		console.log('[前端] 登出');
+		console.log('[前端] 开始登出流程');
+		// 立即清除用户状态和 token
+		setUser(null);
+		localStorage.removeItem('jwt_token');
+		console.log('[前端] 已清除本地状态，跳转到退出接口');
+		// 直接跳转到退出接口，让后端处理 Cookie 清除和重定向
+		// 后端会在重定向 URL 中添加 logout=1 参数
 		window.location.href = '/api/logout';
 	};
 

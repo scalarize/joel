@@ -432,11 +432,36 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 	const isProduction = request.url.startsWith('https://');
 	const clearCookie = clearSessionCookie(isProduction);
 
-	console.log(`[登出] 清除会话，重定向到首页`);
+	// 获取重定向目标（清除 URL 中的 token 参数）
+	const url = new URL(request.url);
+	const redirectParam = url.searchParams.get('redirect');
+	let targetUrl = '/';
+	
+	if (redirectParam) {
+		try {
+			const redirectUrl = new URL(redirectParam, new URL(request.url).origin);
+			// 只允许 scalarize.org 域名下的跳转
+			if (redirectUrl.hostname.endsWith('.scalarize.org') || redirectUrl.hostname === 'scalarize.org') {
+				// 清除 redirect URL 中的 token 参数
+				redirectUrl.searchParams.delete('token');
+				targetUrl = redirectUrl.pathname + redirectUrl.search;
+				console.log(`[登出] 重定向到指定页面: ${targetUrl}`);
+			}
+		} catch (error) {
+			console.warn(`[登出] 重定向 URL 格式无效: ${redirectParam}`);
+		}
+	}
+
+	// 在重定向 URL 中添加 logout=1 参数，让前端知道这是退出后的重定向
+	const redirectUrl = new URL(targetUrl, new URL(request.url).origin);
+	redirectUrl.searchParams.set('logout', '1');
+	const finalTargetUrl = redirectUrl.pathname + redirectUrl.search;
+	
+	console.log(`[登出] 清除会话，重定向到: ${finalTargetUrl}`);
 	return new Response(null, {
 		status: 302,
 		headers: {
-			Location: '/',
+			Location: finalTargetUrl,
 			'Set-Cookie': clearCookie,
 		},
 	});
