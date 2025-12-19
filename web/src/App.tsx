@@ -378,6 +378,7 @@ function Dashboard({ user }: { user: User | null }) {
 			url: '/favor',
 			icon: '🔖',
 			external: false,
+			adminOnly: true,
 		},
 		{
 			id: 'gd',
@@ -385,7 +386,7 @@ function Dashboard({ user }: { user: User | null }) {
 			description: 'GD 相关开发工具和资源',
 			url: 'http://gd.scalarize.org/',
 			icon: '⚙️',
-			external: true,
+			external: false,
 		},
 		{
 			id: 'admin',

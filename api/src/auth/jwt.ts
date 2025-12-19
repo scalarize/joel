@@ -177,3 +177,4 @@ export function getJWTFromRequest(request: Request): string | null {
 
 	return null;
 }
+
