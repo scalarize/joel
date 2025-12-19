@@ -34,6 +34,9 @@ body {
 }
 
 .logo {
+	display: flex;
+	align-items: center;
+	gap: 12px;
 	text-decoration: none;
 	color: #667eea;
 	cursor: pointer;
@@ -42,6 +45,13 @@ body {
 
 .logo:hover {
 	opacity: 0.8;
+}
+
+.logo-icon {
+	width: 32px;
+	height: 32px;
+	object-fit: contain;
+	display: block;
 }
 
 .logo h1 {
@@ -289,6 +299,19 @@ body {
 @media (max-width: 768px) {
 	.header-content {
 		padding: 0 16px;
+	}
+
+	.logo-icon {
+		width: 28px;
+		height: 28px;
+	}
+
+	.logo {
+		gap: 8px;
+	}
+
+	.logo h1 {
+		font-size: 20px;
 	}
 
 	.user-details {

@@ -154,7 +154,7 @@ function Header({ user, onLogin, onLogout }: { user: User | null; onLogin: () =>
 			<div className="header-content">
 				<a href="/" className="logo">
 					<img src="/joel.png" alt="Joel" className="logo-icon" />
-					<h1>Joel</h1>
+					<h1>Joel 工作台</h1>
 				</a>
 				<div className="user-section">
 					{user ? (
