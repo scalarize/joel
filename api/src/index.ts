@@ -6,7 +6,8 @@
 import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
 import { generateJWT, verifyJWT, getJWTFromRequest } from './auth/jwt';
-import { upsertUser, getUserById, updateUserProfile, updateUserLastLogout, getUserLastLogout } from './db/schema';
+import { upsertUser, getUserById, updateUserProfile } from './db/schema';
+import { updateUserLastLogoutKV, getUserLastLogoutKV } from './auth/session-kv';
 import { loginTemplate, getDashboardTemplate } from './templates';
 import { checkAdminAccess, isAdminEmail } from './admin/auth';
 import { getCloudflareUsage } from './admin/analytics';
@@ -14,6 +15,7 @@ import { getCloudflareUsage } from './admin/analytics';
 interface Env {
 	DB: D1Database;
 	ASSETS: R2Bucket; // R2 bucket for storing uploaded images
+	USER_SESSION: KVNamespace; // KV 存储用户会话信息（用于快速查询 last_logout_at）
 	GOOGLE_CLIENT_ID: string;
 	GOOGLE_CLIENT_SECRET: string;
 	BASE_URL?: string;
@@ -457,13 +459,14 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 		}
 	}
 	
-	// 更新用户最后登出时间
+	// 更新用户最后登出时间到 KV
 	if (userId) {
+		const now = new Date().toISOString();
 		try {
-			await updateUserLastLogout(env.DB, userId);
-			console.log(`[登出] 已更新用户最后登出时间: ${userId}`);
+			await updateUserLastLogoutKV(env.USER_SESSION, userId, now);
+			console.log(`[登出] 已更新用户最后登出时间到 KV: ${userId}`);
 		} catch (error) {
-			console.error(`[登出] 更新用户最后登出时间失败:`, error);
+			console.error(`[登出] 更新 KV 失败:`, error);
 			// 继续执行退出流程，即使更新失败
 		}
 	} else {
@@ -523,7 +526,7 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	const jwtToken = getJWTFromRequest(request);
 	if (jwtToken) {
 		console.log('[API] /api/me 检测到 JWT token');
-		const payload = await verifyJWT(jwtToken, env, env.DB);
+		const payload = await verifyJWT(jwtToken, env, env.USER_SESSION);
 		if (payload) {
 			// 从数据库获取完整用户信息
 			const user = await getUserById(env.DB, payload.userId);

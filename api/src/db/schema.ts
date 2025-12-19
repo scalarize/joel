@@ -15,7 +15,6 @@ export interface User {
 	email: string; // 用于多 OAuth 账号关联的关键字段（UNIQUE）
 	name: string; // 显示名称（用户可自定义覆盖）
 	picture?: string; // 头像 URL（用户可自定义覆盖）
-	last_logout_at?: string; // 最后登出时间（用于令牌失效检查）
 	created_at: string;
 	updated_at: string;
 }
@@ -30,13 +29,11 @@ CREATE TABLE IF NOT EXISTS users (
 	email TEXT NOT NULL UNIQUE,
 	name TEXT NOT NULL,
 	picture TEXT,
-	last_logout_at TEXT,
 	created_at TEXT NOT NULL DEFAULT (datetime('now')),
 	updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_last_logout_at ON users(last_logout_at);
 `;
 
 /**
@@ -168,32 +165,5 @@ export async function updateUserProfile(
 
 	console.log(`[数据库] 用户 Profile 更新成功: ${userId}`);
 	return result;
-}
-
-/**
- * 更新用户最后登出时间
- */
-export async function updateUserLastLogout(db: D1Database, userId: string): Promise<void> {
-	console.log(`[数据库] 更新用户最后登出时间: ${userId}`);
-	const now = new Date().toISOString();
-	
-	await db
-		.prepare('UPDATE users SET last_logout_at = ?, updated_at = ? WHERE id = ?')
-		.bind(now, now, userId)
-		.run();
-	
-	console.log(`[数据库] 用户最后登出时间已更新: ${userId}`);
-}
-
-/**
- * 获取用户最后登出时间
- */
-export async function getUserLastLogout(db: D1Database, userId: string): Promise<string | null> {
-	const result = await db
-		.prepare('SELECT last_logout_at FROM users WHERE id = ?')
-		.bind(userId)
-		.first<{ last_logout_at: string | null }>();
-	
-	return result?.last_logout_at || null;
 }
 

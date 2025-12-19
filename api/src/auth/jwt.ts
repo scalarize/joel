@@ -99,12 +99,12 @@ export async function generateJWT(
  * 验证并解析 JWT Token
  * @param token JWT token 字符串
  * @param env 环境变量（包含 JWT_SECRET）
- * @param db 数据库实例（可选，用于检查用户最后登出时间）
+ * @param kv KV 命名空间（可选，用于快速检查用户最后登出时间）
  */
 export async function verifyJWT(
 	token: string,
 	env: { JWT_SECRET?: string },
-	db?: D1Database
+	kv?: KVNamespace
 ): Promise<JWTPayload | null> {
 	try {
 		const secret = getJWTSecret(env);
@@ -158,13 +158,14 @@ export async function verifyJWT(
 			return null;
 		}
 
-		// 如果提供了数据库，检查用户最后登出时间
-		if (db && payloadJson.userId) {
+		// 检查用户最后登出时间（仅使用 KV）
+		if (kv && payloadJson.userId) {
 			try {
-				const { getUserLastLogout } = await import('../db/schema');
-				const lastLogoutAt = await getUserLastLogout(db, payloadJson.userId);
+				const { getUserLastLogoutKV } = await import('./session-kv');
+				const lastLogoutAt = await getUserLastLogoutKV(kv, payloadJson.userId);
 				
 				if (lastLogoutAt) {
+					console.log(`[JWT] 从 KV 获取到用户最后登出时间: ${payloadJson.userId}`);
 					// 将最后登出时间转换为 Unix 时间戳（秒）
 					const lastLogoutTimestamp = Math.floor(new Date(lastLogoutAt).getTime() / 1000);
 					
@@ -175,9 +176,8 @@ export async function verifyJWT(
 					}
 				}
 			} catch (error) {
-				console.error('[JWT] 检查用户最后登出时间失败:', error);
-				// 如果检查失败，为了安全起见，拒绝 token
-				return null;
+				console.warn('[JWT] 从 KV 读取最后登出时间失败:', error);
+				// KV 读取失败不影响 token 验证，继续处理
 			}
 		}
 
