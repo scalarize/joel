@@ -943,37 +943,24 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 	const origin = request.headers.get('Origin');
 	let allowedOrigin: string | null = null;
 
-	// 允许的域名列表（包括 joel 和 gd 项目）
-	const allowedOrigins = [
-		'https://joel.scalarize.org',
-		'https://gd.scalarize.org',
-		'http://localhost:5173', // 开发环境
-		'http://localhost:8787', // Worker 开发环境
-	];
-
-	// 如果配置了前端地址，添加到允许列表
-	if (env.FRONTEND_URL) {
-		try {
-			const frontendOrigin = new URL(env.FRONTEND_URL).origin;
-			if (!allowedOrigins.includes(frontendOrigin)) {
-				allowedOrigins.push(frontendOrigin);
-			}
-		} catch (error) {
-			console.error('[CORS] 解析 FRONTEND_URL 失败:', error);
-		}
-	}
-
-	// 检查 origin 是否在允许列表中
 	if (origin) {
-		// 允许 scalarize.org 的所有子域名
+		// 允许 scalarize.org 的所有子域名（包括 joel.scalarize.org 和 gd.scalarize.org）
 		if (origin.endsWith('.scalarize.org') || origin === 'https://scalarize.org') {
 			allowedOrigin = origin;
-		} else if (allowedOrigins.includes(origin)) {
+		}
+		// 开发环境：允许 localhost
+		else if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
 			allowedOrigin = origin;
-		} else {
-			// 开发环境：允许 localhost
-			if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
-				allowedOrigin = origin;
+		}
+		// 如果配置了前端地址，也允许该地址（用于特殊情况）
+		else if (env.FRONTEND_URL) {
+			try {
+				const frontendOrigin = new URL(env.FRONTEND_URL).origin;
+				if (origin === frontendOrigin) {
+					allowedOrigin = origin;
+				}
+			} catch (error) {
+				console.error('[CORS] 解析 FRONTEND_URL 失败:', error);
 			}
 		}
 	}
