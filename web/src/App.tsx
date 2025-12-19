@@ -193,7 +193,7 @@ function Dashboard() {
 			id: 'gd',
 			title: 'GD 开发',
 			description: 'GD 相关开发工具和资源',
-			url: 'http://scalarize.cn/gd',
+			url: 'http://gd.scalarize.org/',
 			icon: '⚙️',
 			external: true,
 		},
