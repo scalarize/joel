@@ -41,6 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_users_last_login_at ON users(last_login_at);
 
 /**
  * 创建或更新用户信息
+ * 注意：对于已存在的用户，不会覆盖用户自定义的 name 和 picture
  */
 export async function upsertUser(
 	db: D1Database,
@@ -54,28 +55,52 @@ export async function upsertUser(
 	console.log(`[数据库] 开始创建或更新用户: ${user.email}`);
 
 	const now = new Date().toISOString();
-	const result = await db
-		.prepare(
-			`
-		INSERT INTO users (id, email, name, picture, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			email = excluded.email,
-			name = excluded.name,
-			picture = excluded.picture,
-			updated_at = excluded.updated_at
-		RETURNING *
-	`
-		)
-		.bind(user.id, user.email, user.name, user.picture || null, now, now)
-		.first<User>();
+	
+	// 先检查用户是否存在
+	const existingUser = await getUserById(db, user.id);
+	
+	if (existingUser) {
+		// 用户已存在，只更新 email（如果需要），保留用户自定义的 name 和 picture
+		console.log(`[数据库] 用户已存在，保留自定义字段，仅更新 email`);
+		const result = await db
+			.prepare(
+				`
+			UPDATE users 
+			SET email = ?, updated_at = ?
+			WHERE id = ?
+			RETURNING *
+		`
+			)
+			.bind(user.email, now, user.id)
+			.first<User>();
 
-	if (!result) {
-		throw new Error(`[数据库] 创建或更新用户失败: ${user.email}`);
+		if (!result) {
+			throw new Error(`[数据库] 更新用户失败: ${user.email}`);
+		}
+
+		console.log(`[数据库] 用户更新成功（保留自定义字段）: ${user.email}`);
+		return result;
+	} else {
+		// 新用户，创建时设置所有字段
+		console.log(`[数据库] 创建新用户`);
+		const result = await db
+			.prepare(
+				`
+			INSERT INTO users (id, email, name, picture, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+			RETURNING *
+		`
+			)
+			.bind(user.id, user.email, user.name, user.picture || null, now, now)
+			.first<User>();
+
+		if (!result) {
+			throw new Error(`[数据库] 创建用户失败: ${user.email}`);
+		}
+
+		console.log(`[数据库] 用户创建成功: ${user.email}`);
+		return result;
 	}
-
-	console.log(`[数据库] 用户创建或更新成功: ${user.email}`);
-	return result;
 }
 
 /**
