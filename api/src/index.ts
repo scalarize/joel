@@ -6,7 +6,7 @@
 import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
 import { generateJWT, verifyJWT, getJWTFromRequest } from './auth/jwt';
-import { upsertUser, getUserById, updateUserProfile } from './db/schema';
+import { upsertUser, getUserById, updateUserProfile, getAllUsers } from './db/schema';
 import { updateUserLastLogoutKV, getUserLastLogoutKV } from './auth/session-kv';
 import { loginTemplate, getDashboardTemplate } from './templates';
 import { checkAdminAccess, isAdminEmail } from './admin/auth';
@@ -97,10 +97,15 @@ export default {
 					return handleLogout(request, env);
 				}
 
-				// 管理员 API：获取 Cloudflare 用量数据
-				if (path === '/api/admin/analytics' && request.method === 'GET') {
-					return handleAdminAnalytics(request, env);
-				}
+			// 管理员 API：获取 Cloudflare 用量数据
+			if (path === '/api/admin/analytics' && request.method === 'GET') {
+				return handleAdminAnalytics(request, env);
+			}
+
+			// 管理员 API：获取用户列表
+			if (path === '/api/admin/users' && request.method === 'GET') {
+				return handleAdminUsers(request, env);
+			}
 
 				return handleApiNotFound(request, env);
 			}
@@ -347,12 +352,28 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		// 注意：当前架构使用 Google user ID 作为主键
 		// 未来扩展多 OAuth 时，需要改为通过 email 查找或创建用户，并创建 oauth_accounts 记录
 		console.log(`[Callback] 存储用户信息到数据库`);
+		const now = new Date().toISOString();
+		// 先查询用户是否存在
+		const existingUser = await getUserById(env.DB, googleUser.id);
 		const user = await upsertUser(env.DB, {
 			id: googleUser.id, // 当前：直接使用 Google user ID
 			email: googleUser.email,
 			name: googleUser.name,
 			picture: googleUser.picture,
 		});
+		// 更新最后登录时间（如果字段存在）
+		if (user) {
+			try {
+				await env.DB
+					.prepare('UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?')
+					.bind(now, now, user.id)
+					.run();
+				console.log(`[Callback] 已更新用户最后登录时间: ${user.email}`);
+			} catch (error) {
+				// 如果字段不存在，记录警告但不影响登录流程
+				console.warn(`[Callback] 更新最后登录时间失败（可能是字段不存在）:`, error);
+			}
+		}
 
 		// 生成 JWT token
 		console.log(`[Callback] 生成 JWT token`);
@@ -982,6 +1003,47 @@ async function handleAdminAnalytics(request: Request, env: Env): Promise<Respons
 			{
 				error: 'Internal Server Error',
 				message: error instanceof Error ? error.message : '获取用量数据失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 管理员 - 获取用户列表
+ */
+async function handleAdminUsers(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/admin/users 请求');
+
+	// 检查管理员权限
+	const admin = await checkAdminAccess(request, env.DB);
+	if (!admin) {
+		console.log('[API] /api/admin/users 权限不足');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '需要管理员权限',
+			},
+			403
+		);
+	}
+
+	try {
+		console.log('[API] /api/admin/users 获取用户列表');
+		const users = await getAllUsers(env.DB);
+		
+		console.log(`[API] /api/admin/users 返回 ${users.length} 个用户`);
+		return jsonWithCors(request, env, { users }, 200);
+	} catch (error) {
+		console.error(`[API] /api/admin/users 获取用户列表失败:`, error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '获取用户列表失败',
 			},
 			500
 		);

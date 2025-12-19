@@ -15,6 +15,7 @@ export interface User {
 	email: string; // 用于多 OAuth 账号关联的关键字段（UNIQUE）
 	name: string; // 显示名称（用户可自定义覆盖）
 	picture?: string; // 头像 URL（用户可自定义覆盖）
+	last_login_at?: string; // 最后登录时间
 	created_at: string;
 	updated_at: string;
 }
@@ -29,11 +30,13 @@ CREATE TABLE IF NOT EXISTS users (
 	email TEXT NOT NULL UNIQUE,
 	name TEXT NOT NULL,
 	picture TEXT,
+	last_login_at TEXT,
 	created_at TEXT NOT NULL DEFAULT (datetime('now')),
 	updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_last_login_at ON users(last_login_at);
 `;
 
 /**
@@ -165,5 +168,39 @@ export async function updateUserProfile(
 
 	console.log(`[数据库] 用户 Profile 更新成功: ${userId}`);
 	return result;
+}
+
+/**
+ * 获取所有用户列表（按最后登录时间排序，从未登录的用户排在最后）
+ */
+export async function getAllUsers(db: D1Database): Promise<User[]> {
+	console.log(`[数据库] 查询所有用户列表`);
+	
+	try {
+		// SQLite 不支持 NULLS LAST，使用 CASE 语句处理
+		const result = await db
+			.prepare(`
+				SELECT * FROM users 
+				ORDER BY 
+					CASE WHEN last_login_at IS NULL THEN 1 ELSE 0 END,
+					last_login_at DESC,
+					created_at DESC
+			`)
+			.all<User>();
+		
+		const users = result.results || [];
+		console.log(`[数据库] 找到 ${users.length} 个用户`);
+		return users;
+	} catch (error) {
+		// 如果 last_login_at 字段不存在，回退到按 created_at 排序
+		console.warn(`[数据库] 查询用户列表时出错，可能是 last_login_at 字段不存在，使用回退查询:`, error);
+		const result = await db
+			.prepare('SELECT * FROM users ORDER BY created_at DESC')
+			.all<User>();
+		
+		const users = result.results || [];
+		console.log(`[数据库] 使用回退查询找到 ${users.length} 个用户`);
+		return users;
+	}
 }
 
