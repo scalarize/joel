@@ -8,6 +8,7 @@ interface User {
 	email: string;
 	name: string;
 	picture: string | null;
+	isAdmin?: boolean;
 }
 
 interface ApiResponse {
@@ -88,7 +89,7 @@ function App() {
 						<LoginPrompt onLogin={handleLogin} />
 					)
 				) : user ? (
-					<Dashboard />
+					<Dashboard user={user} />
 				) : (
 					<LoginPrompt onLogin={handleLogin} />
 				)}
@@ -171,7 +172,7 @@ function LoginPrompt({ onLogin }: { onLogin: () => void }) {
 	);
 }
 
-function Dashboard() {
+function Dashboard({ user }: { user: User | null }) {
 	const modules = [
 		{
 			id: 'profile',
@@ -204,14 +205,23 @@ function Dashboard() {
 			url: '/admin',
 			icon: '⚙️',
 			external: false,
+			adminOnly: true,
 		},
 	];
+
+	// 如果不是管理员，过滤掉需要管理员权限的模块
+	const visibleModules = modules.filter((module) => {
+		if (module.adminOnly && !user?.isAdmin) {
+			return false;
+		}
+		return true;
+	});
 
 	return (
 		<div className="dashboard">
 			<h2 className="dashboard-title">功能工作台</h2>
 			<div className="modules-grid">
-				{modules.map((module) => (
+				{visibleModules.map((module) => (
 					<a
 						key={module.id}
 						href={module.url}

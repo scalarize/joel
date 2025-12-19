@@ -11,13 +11,19 @@ import { getUserById } from '../db/schema';
 const ADMIN_EMAIL = 'scalarize@gmail.com';
 
 /**
+ * 检查用户邮箱是否为管理员
+ * @param email 用户邮箱
+ * @returns 是否为管理员
+ */
+export function isAdminEmail(email: string): boolean {
+	return email === ADMIN_EMAIL;
+}
+
+/**
  * 检查当前用户是否为管理员
  * @returns 如果是管理员，返回用户对象；否则返回 null
  */
-export async function checkAdminAccess(
-	request: Request,
-	db: D1Database
-): Promise<{ id: string; email: string; name: string } | null> {
+export async function checkAdminAccess(request: Request, db: D1Database): Promise<{ id: string; email: string; name: string } | null> {
 	console.log('[管理员] 检查管理员权限');
 
 	const session = getSessionFromRequest(request);
@@ -32,7 +38,7 @@ export async function checkAdminAccess(
 		return null;
 	}
 
-	if (user.email !== ADMIN_EMAIL) {
+	if (!isAdminEmail(user.email)) {
 		console.log(`[管理员] 用户 ${user.email} 不是管理员`);
 		return null;
 	}
@@ -44,4 +50,3 @@ export async function checkAdminAccess(
 		name: user.name,
 	};
 }
-

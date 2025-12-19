@@ -7,7 +7,7 @@ import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } fro
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
 import { upsertUser, getUserById, updateUserProfile } from './db/schema';
 import { loginTemplate, getDashboardTemplate } from './templates';
-import { checkAdminAccess } from './admin/auth';
+import { checkAdminAccess, isAdminEmail } from './admin/auth';
 import { getCloudflareUsage } from './admin/analytics';
 
 interface Env {
@@ -401,7 +401,8 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 		);
 	}
 
-	console.log(`[API] /api/me 返回用户信息: ${user.email}`);
+	const isAdmin = isAdminEmail(user.email);
+	console.log(`[API] /api/me 返回用户信息: ${user.email}, 管理员: ${isAdmin}`);
 	return jsonWithCors(
 		request,
 		env,
@@ -412,6 +413,7 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 				email: user.email,
 				name: user.name,
 				picture: user.picture ?? null,
+				isAdmin,
 			},
 		},
 		200
