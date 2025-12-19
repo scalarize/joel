@@ -88,6 +88,10 @@ export default {
 					return handleApiPing(request, env);
 				}
 
+				if (path === '/api/host-info' && request.method === 'GET') {
+					return handleApiHostInfo(request, env);
+				}
+
 				if (path === '/api/me' && request.method === 'GET') {
 					return handleApiMe(request, env);
 				}
@@ -658,6 +662,30 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 function handleApiPing(request: Request, env: Env): Response {
 	console.log('[API] /api/ping 请求');
 	return jsonWithCors(request, env, { message: 'pong' }, 200);
+}
+
+/**
+ * 获取请求的 host 信息
+ * 判断是否为 cnHost（joel.scalarize.cn）
+ */
+function getHostInfo(request: Request): { host: string; isCnHost: boolean; domainSuffix: string } {
+	const url = new URL(request.url);
+	const host = url.hostname;
+	const isCnHost = host === 'joel.scalarize.cn';
+	const domainSuffix = isCnHost ? 'scalarize.cn' : 'scalarize.org';
+
+	console.log(`[Host] 检测到 host: ${host}, isCnHost: ${isCnHost}, domainSuffix: ${domainSuffix}`);
+
+	return { host, isCnHost, domainSuffix };
+}
+
+/**
+ * API: 返回 host 信息（给前端使用）
+ */
+function handleApiHostInfo(request: Request, env: Env): Response {
+	console.log('[API] /api/host-info 请求');
+	const hostInfo = getHostInfo(request);
+	return jsonWithCors(request, env, hostInfo, 200);
 }
 
 /**

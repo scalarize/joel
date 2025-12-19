@@ -17,9 +17,16 @@ interface ApiResponse {
 	user: User | null;
 }
 
+interface HostInfo {
+	host: string;
+	isCnHost: boolean;
+	domainSuffix: string;
+}
+
 function App() {
 	const [user, setUser] = useState<User | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [hostInfo, setHostInfo] = useState<HostInfo | null>(null);
 
 	useEffect(() => {
 		const url = new URL(window.location.href);
@@ -48,6 +55,40 @@ function App() {
 			window.history.replaceState({}, '', url.toString());
 		}
 
+		// 获取 host 信息
+		const loadHostInfo = async () => {
+			try {
+				const response = await fetch('/api/host-info', {
+					credentials: 'include',
+				});
+				if (response.ok) {
+					const data: HostInfo = await response.json();
+					setHostInfo(data);
+					console.log('[前端] Host 信息:', data);
+				} else {
+					// 如果 API 失败，从 window.location 推断
+					const host = window.location.hostname;
+					const isCnHost = host === 'joel.scalarize.cn';
+					setHostInfo({
+						host,
+						isCnHost,
+						domainSuffix: isCnHost ? 'scalarize.cn' : 'scalarize.org',
+					});
+				}
+			} catch (error) {
+				console.error('[前端] 获取 host 信息失败:', error);
+				// 失败时从 window.location 推断
+				const host = window.location.hostname;
+				const isCnHost = host === 'joel.scalarize.cn';
+				setHostInfo({
+					host,
+					isCnHost,
+					domainSuffix: isCnHost ? 'scalarize.cn' : 'scalarize.org',
+				});
+			}
+		};
+
+		loadHostInfo();
 		checkAuth();
 	}, []);
 
@@ -169,7 +210,7 @@ function App() {
 						<LoginPrompt onLogin={handleLogin} />
 					)
 				) : user ? (
-					<Dashboard user={user} />
+					<Dashboard user={user} hostInfo={hostInfo} />
 				) : (
 					<LoginPrompt onLogin={handleLogin} />
 				)}
@@ -361,7 +402,24 @@ function LoginPrompt({ onLogin }: { onLogin: () => void }) {
 	);
 }
 
-function Dashboard({ user }: { user: User | null }) {
+/**
+ * 根据 host 信息替换链接中的域名
+ * 如果链接包含 .scalarize.org，根据 isCnHost 替换为 .scalarize.cn
+ */
+function replaceDomainInUrl(url: string, hostInfo: HostInfo | null): string {
+	if (!hostInfo || !hostInfo.isCnHost) {
+		return url;
+	}
+
+	// 只处理包含 .scalarize.org 的链接
+	if (url.includes('.scalarize.org')) {
+		return url.replace(/\.scalarize\.org/g, '.scalarize.cn');
+	}
+
+	return url;
+}
+
+function Dashboard({ user, hostInfo }: { user: User | null; hostInfo: HostInfo | null }) {
 	const modules = [
 		{
 			id: 'profile',
@@ -397,7 +455,10 @@ function Dashboard({ user }: { user: User | null }) {
 			external: false,
 			adminOnly: true,
 		},
-	];
+	].map((module) => ({
+		...module,
+		url: replaceDomainInUrl(module.url, hostInfo),
+	}));
 
 	// 如果不是管理员，过滤掉需要管理员权限的模块
 	const visibleModules = modules.filter((module) => {
