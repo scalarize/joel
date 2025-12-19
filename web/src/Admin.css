@@ -590,3 +590,128 @@
 	margin-top: 1rem;
 	font-size: 0.85rem;
 }
+
+/* 重置密码相关样式 */
+.admin-reset-password-btn {
+	padding: 0.4rem 0.8rem;
+	background-color: #ffc107;
+	color: #333;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 0.85rem;
+	transition: background-color 0.2s;
+}
+
+.admin-reset-password-btn:hover {
+	background-color: #e0a800;
+}
+
+.admin-reset-password-info {
+	background-color: #f8f9fa;
+	border: 1px solid #e0e0e0;
+	border-radius: 4px;
+	padding: 0.75rem;
+	margin-bottom: 1.5rem;
+	font-size: 0.9rem;
+	color: #666;
+}
+
+.admin-reset-password-info strong {
+	color: #333;
+}
+
+.admin-form-hint {
+	display: block;
+	margin-top: 0.25rem;
+	font-size: 0.8rem;
+	color: #666;
+}
+
+.admin-reset-password-success {
+	text-align: center;
+}
+
+.admin-reset-password-success-icon {
+	font-size: 48px;
+	margin-bottom: 1rem;
+}
+
+.admin-reset-password-success-title {
+	font-size: 1.2rem;
+	font-weight: 600;
+	color: #28a745;
+	margin-bottom: 0.5rem;
+}
+
+.admin-reset-password-success-text {
+	color: #666;
+	margin-bottom: 1rem;
+}
+
+.admin-reset-password-warning {
+	color: #856404;
+	background-color: #fff3cd;
+	border: 1px solid #ffc107;
+	border-radius: 4px;
+	padding: 0.75rem;
+	margin-top: 1rem;
+	font-size: 0.85rem;
+}
+
+/* 用户操作按钮组 */
+.admin-user-actions {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.admin-ban-btn {
+	padding: 0.4rem 0.8rem;
+	background-color: #dc3545;
+	color: white;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 0.85rem;
+	transition: background-color 0.2s;
+}
+
+.admin-ban-btn:hover:not(:disabled) {
+	background-color: #c82333;
+}
+
+.admin-ban-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.admin-unban-btn {
+	padding: 0.4rem 0.8rem;
+	background-color: #28a745;
+	color: white;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 0.85rem;
+	transition: background-color 0.2s;
+}
+
+.admin-unban-btn:hover:not(:disabled) {
+	background-color: #218838;
+}
+
+.admin-unban-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+/* 被封禁用户的行样式 */
+.admin-user-banned {
+	opacity: 0.6;
+	background-color: #fff5f5;
+}
+
+.admin-user-banned td {
+	color: #999;
+}

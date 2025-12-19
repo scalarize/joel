@@ -157,6 +157,16 @@ export default {
 					return handleAdminInviteUser(request, env);
 				}
 
+				// 管理员 API：重置用户密码
+				if (path === '/api/admin/reset-user-password' && request.method === 'POST') {
+					return handleAdminResetUserPassword(request, env);
+				}
+
+				// 管理员 API：封禁/解封用户
+				if (path === '/api/admin/ban-user' && request.method === 'POST') {
+					return handleAdminBanUser(request, env);
+				}
+
 				// 修改密码 API
 				if (path === '/api/profile/change-password' && request.method === 'POST') {
 					return handleApiChangePassword(request, env);
@@ -455,6 +465,32 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		}
 
 		console.log(`[Callback] 用户处理完成，用户 ID: ${user.id}, 是否新用户: ${isNewUser}, 关联方式: ${linkedMethod}`);
+
+		// 检查用户是否被封禁
+		if (user.is_banned === 1) {
+			console.log(`[Callback] 用户已被封禁: ${user.email}`);
+			const frontendUrl = env.FRONTEND_URL || '/';
+			return new Response(
+				`<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>账号已被封禁</title>
+</head>
+<body>
+	<h1>账号已被封禁</h1>
+	<p>您的账号已被封禁，无法登录系统。</p>
+	<p><a href="${frontendUrl}">返回首页</a></p>
+</body>
+</html>`,
+				{
+					status: 403,
+					headers: {
+						'Content-Type': 'text/html; charset=utf-8',
+					},
+				}
+			);
+		}
 
 		// 更新最后登录时间（如果字段存在）
 		try {
@@ -1532,6 +1568,19 @@ async function handlePasswordLogin(request: Request, env: Env): Promise<Response
 			);
 		}
 
+		// 检查用户是否被封禁
+		if (user.is_banned === 1) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Forbidden',
+					message: '您的账号已被封禁，无法登录',
+				},
+				403
+			);
+		}
+
 		// 检查用户是否有密码（邀请注册制：只有预设的用户才有密码）
 		if (!user.password_hash) {
 			return jsonWithCors(
@@ -1882,6 +1931,206 @@ async function handleApiChangePassword(request: Request, env: Env): Promise<Resp
 			{
 				error: 'Internal Server Error',
 				message: error instanceof Error ? error.message : '修改密码失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 管理员 - 重置用户密码
+ */
+async function handleAdminResetUserPassword(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/admin/reset-user-password POST 请求');
+
+	// 检查管理员权限
+	const admin = await checkAdminAccess(request, env.DB);
+	if (!admin) {
+		console.log('[API] /api/admin/reset-user-password 权限不足');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '需要管理员权限',
+			},
+			403
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { userId, newPassword } = body as { userId?: string; newPassword?: string };
+
+		// 验证输入
+		if (!userId || !newPassword) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'userId 和 newPassword 都是必填项',
+				},
+				400
+			);
+		}
+
+		// 验证新密码强度
+		const passwordError = validatePasswordStrength(newPassword);
+		if (passwordError) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: passwordError,
+				},
+				400
+			);
+		}
+
+		// 检查用户是否存在
+		const user = await getUserById(env.DB, userId);
+		if (!user) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Not Found',
+					message: '用户不存在',
+				},
+				404
+			);
+		}
+
+		// 生成新密码哈希
+		console.log('[API] /api/admin/reset-user-password 生成新密码哈希');
+		const passwordHash = await hashPassword(newPassword);
+
+		// 更新密码（设置 must_change 标志，要求用户首次登录后修改密码）
+		console.log('[API] /api/admin/reset-user-password 更新密码');
+		await updateUserPassword(env.DB, userId, passwordHash, true);
+
+		console.log('[API] /api/admin/reset-user-password 密码重置成功');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				message: '密码重置成功，用户下次登录后需要修改密码',
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/admin/reset-user-password 重置失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '重置密码失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 管理员 - 封禁/解封用户
+ */
+async function handleAdminBanUser(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/admin/ban-user POST 请求');
+
+	// 检查管理员权限
+	const admin = await checkAdminAccess(request, env.DB);
+	if (!admin) {
+		console.log('[API] /api/admin/ban-user 权限不足');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '需要管理员权限',
+			},
+			403
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { userId, banned } = body as { userId?: string; banned?: boolean };
+
+		// 验证输入
+		if (userId === undefined || banned === undefined) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'userId 和 banned 都是必填项',
+				},
+				400
+			);
+		}
+
+		// 检查用户是否存在
+		const user = await getUserById(env.DB, userId);
+		if (!user) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Not Found',
+					message: '用户不存在',
+				},
+				404
+			);
+		}
+
+		// 不能封禁自己
+		const session = getSessionFromRequest(request);
+		if (session && session.userId === userId && banned) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '不能封禁自己的账号',
+				},
+				400
+			);
+		}
+
+		// 更新封禁状态
+		const now = new Date().toISOString();
+		await env.DB.prepare('UPDATE users SET is_banned = ?, updated_at = ? WHERE id = ?')
+			.bind(banned ? 1 : 0, now, userId)
+			.run();
+
+		console.log(`[API] /api/admin/ban-user ${banned ? '封禁' : '解封'}用户成功: ${user.email}`);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				message: banned ? '用户已封禁' : '用户已解封',
+				user: {
+					id: user.id,
+					email: user.email,
+					name: user.name,
+					is_banned: banned ? 1 : 0,
+				},
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/admin/ban-user 操作失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '操作失败',
 			},
 			500
 		);

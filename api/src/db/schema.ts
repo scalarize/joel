@@ -17,6 +17,7 @@ export interface User {
 	picture?: string; // 头像 URL（用户可自定义覆盖）
 	password_hash?: string; // 密码哈希（可选，用户可以通过 OAuth 或密码登录）
 	password_must_change?: number; // 是否需要修改密码（0 或 1，邀请用户时设置为 1）
+	is_banned?: number; // 是否被封禁（0 或 1，1 表示已封禁）
 	last_login_at?: string; // 最后登录时间
 	created_at: string;
 	updated_at: string;
