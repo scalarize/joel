@@ -11,8 +11,32 @@ import AdminUsers from './AdminUsers';
 type AdminTab = 'dashboard' | 'users';
 
 export default function Admin() {
-	const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+	// 从 URL 路径读取当前 tab，默认为 users
+	const getTabFromPath = (): AdminTab => {
+		const path = window.location.pathname;
+		if (path === '/admin/dashboard') {
+			return 'dashboard';
+		}
+		if (path === '/admin/users') {
+			return 'users';
+		}
+		// 默认 /admin 路径显示 users
+		return 'users';
+	};
+
+	const [activeTab, setActiveTab] = useState<AdminTab>(getTabFromPath());
 	const [unauthorized, setUnauthorized] = useState(false);
+
+	// 监听 URL 变化
+	useEffect(() => {
+		const handlePopState = () => {
+			setActiveTab(getTabFromPath());
+		};
+		window.addEventListener('popstate', handlePopState);
+		return () => {
+			window.removeEventListener('popstate', handlePopState);
+		};
+	}, []);
 
 	// 检查权限（通过尝试加载一个 API 来验证）
 	useEffect(() => {
@@ -30,6 +54,14 @@ export default function Admin() {
 		};
 		checkAuth();
 	}, []);
+
+	// 切换 tab 时更新 URL
+	const handleTabChange = (tab: AdminTab) => {
+		setActiveTab(tab);
+		const newPath = `/admin/${tab}`;
+		window.history.pushState({}, '', newPath);
+		console.log(`[Admin] 切换到 ${tab}，更新 URL 为 ${newPath}`);
+	};
 
 	if (unauthorized) {
 		return (
@@ -53,18 +85,26 @@ export default function Admin() {
 
 			{/* 导航标签 */}
 			<div className="admin-tabs">
-				<button
+				<a
+					href="/admin/dashboard"
 					className={`admin-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
-					onClick={() => setActiveTab('dashboard')}
+					onClick={(e) => {
+						e.preventDefault();
+						handleTabChange('dashboard');
+					}}
 				>
 					📊 用量仪表盘
-				</button>
-				<button
+				</a>
+				<a
+					href="/admin/users"
 					className={`admin-tab ${activeTab === 'users' ? 'active' : ''}`}
-					onClick={() => setActiveTab('users')}
+					onClick={(e) => {
+						e.preventDefault();
+						handleTabChange('users');
+					}}
 				>
 					👥 用户列表
-				</button>
+				</a>
 			</div>
 
 			{/* 子模块内容 */}

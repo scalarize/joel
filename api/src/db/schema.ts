@@ -62,6 +62,9 @@ export async function upsertUser(
 	if (existingUser) {
 		// 用户已存在，只更新 email（如果需要），保留用户自定义的 name 和 picture
 		console.log(`[数据库] 用户已存在，保留自定义字段，仅更新 email`);
+		console.log(`[数据库] 保留的 name: ${existingUser.name}, picture: ${existingUser.picture || 'null'}`);
+		console.log(`[数据库] OAuth 返回的 name: ${user.name}, picture: ${user.picture || 'null'}`);
+		
 		const result = await db
 			.prepare(
 				`
@@ -79,6 +82,7 @@ export async function upsertUser(
 		}
 
 		console.log(`[数据库] 用户更新成功（保留自定义字段）: ${user.email}`);
+		console.log(`[数据库] 更新后的 name: ${result.name}, picture: ${result.picture || 'null'}`);
 		return result;
 	} else {
 		// 新用户，创建时设置所有字段

@@ -48,12 +48,7 @@ function base64UrlDecode(base64: string): Uint8Array {
 /**
  * 生成 JWT Token
  */
-export async function generateJWT(
-	userId: string,
-	email: string,
-	name: string,
-	env: { JWT_SECRET?: string }
-): Promise<string> {
+export async function generateJWT(userId: string, email: string, name: string, env: { JWT_SECRET?: string }): Promise<string> {
 	const secret = getJWTSecret(env);
 	const now = Math.floor(Date.now() / 1000);
 
@@ -72,22 +67,12 @@ export async function generateJWT(
 	};
 
 	// 编码 Header 和 Payload
-	const encodedHeader = base64UrlEncode(
-		new TextEncoder().encode(JSON.stringify(header))
-	);
-	const encodedPayload = base64UrlEncode(
-		new TextEncoder().encode(JSON.stringify(payload))
-	);
+	const encodedHeader = base64UrlEncode(new TextEncoder().encode(JSON.stringify(header)));
+	const encodedPayload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
 
 	// 创建签名
 	const signatureInput = `${encodedHeader}.${encodedPayload}`;
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	);
+	const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
 
 	const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signatureInput));
 	const encodedSignature = base64UrlEncode(signature);
@@ -101,11 +86,7 @@ export async function generateJWT(
  * @param env 环境变量（包含 JWT_SECRET）
  * @param kv KV 命名空间（可选，用于快速检查用户最后登出时间）
  */
-export async function verifyJWT(
-	token: string,
-	env: { JWT_SECRET?: string },
-	kv?: KVNamespace
-): Promise<JWTPayload | null> {
+export async function verifyJWT(token: string, env: { JWT_SECRET?: string }, kv?: KVNamespace): Promise<JWTPayload | null> {
 	try {
 		const secret = getJWTSecret(env);
 		const parts = token.split('.');
@@ -119,21 +100,12 @@ export async function verifyJWT(
 
 		// 验证签名
 		const signatureInput = `${encodedHeader}.${encodedPayload}`;
-		const key = await crypto.subtle.importKey(
-			'raw',
-			new TextEncoder().encode(secret),
-			{ name: 'HMAC', hash: 'SHA-256' },
-			false,
-			['verify']
-		);
+		const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+			'verify',
+		]);
 
 		const signature = base64UrlDecode(encodedSignature);
-		const isValid = await crypto.subtle.verify(
-			'HMAC',
-			key,
-			signature,
-			new TextEncoder().encode(signatureInput)
-		);
+		const isValid = await crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(signatureInput));
 
 		if (!isValid) {
 			console.error('[JWT] Token 签名验证失败');
@@ -141,9 +113,7 @@ export async function verifyJWT(
 		}
 
 		// 解析 Payload
-		const payloadJson = JSON.parse(
-			new TextDecoder().decode(base64UrlDecode(encodedPayload))
-		) as JWTPayload;
+		const payloadJson = JSON.parse(new TextDecoder().decode(base64UrlDecode(encodedPayload))) as JWTPayload;
 
 		// 检查过期时间
 		const now = Math.floor(Date.now() / 1000);
@@ -163,12 +133,12 @@ export async function verifyJWT(
 			try {
 				const { getUserLastLogoutKV } = await import('./session-kv');
 				const lastLogoutAt = await getUserLastLogoutKV(kv, payloadJson.userId);
-				
+
 				if (lastLogoutAt) {
 					console.log(`[JWT] 从 KV 获取到用户最后登出时间: ${payloadJson.userId}`);
 					// 将最后登出时间转换为 Unix 时间戳（秒）
 					const lastLogoutTimestamp = Math.floor(new Date(lastLogoutAt).getTime() / 1000);
-					
+
 					// 如果 token 的发放时间早于最后登出时间，则视为失效
 					if (payloadJson.iat < lastLogoutTimestamp) {
 						console.error(`[JWT] Token 发放时间（${payloadJson.iat}）早于用户最后登出时间（${lastLogoutTimestamp}），视为失效`);
@@ -207,4 +177,3 @@ export function getJWTFromRequest(request: Request): string | null {
 
 	return null;
 }
-

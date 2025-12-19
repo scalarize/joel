@@ -22,7 +22,7 @@ function App() {
 
 	useEffect(() => {
 		const url = new URL(window.location.href);
-		
+
 		// 检查是否是退出后的重定向
 		const isLogout = url.searchParams.get('logout') === '1';
 		if (isLogout) {
@@ -36,7 +36,7 @@ function App() {
 			setLoading(false);
 			return;
 		}
-		
+
 		// 检查 URL 中是否有 token 参数（登录回调）
 		const token = url.searchParams.get('token');
 		if (token) {
@@ -46,7 +46,7 @@ function App() {
 			url.searchParams.delete('token');
 			window.history.replaceState({}, '', url.toString());
 		}
-		
+
 		checkAuth();
 	}, []);
 
@@ -62,7 +62,7 @@ function App() {
 				headers['Authorization'] = `Bearer ${token}`;
 				console.log('[前端] 使用 JWT token 进行认证');
 			}
-			
+
 			const response = await fetch('/api/me', {
 				credentials: 'include',
 				headers,
@@ -132,7 +132,7 @@ function App() {
 					) : (
 						<LoginPrompt onLogin={handleLogin} />
 					)
-				) : path === '/admin' ? (
+				) : path === '/admin' || path === '/admin/dashboard' || path === '/admin/users' ? (
 					user ? (
 						<Admin />
 					) : (
@@ -148,15 +148,7 @@ function App() {
 	);
 }
 
-function Header({
-	user,
-	onLogin,
-	onLogout,
-}: {
-	user: User | null;
-	onLogin: () => void;
-	onLogout: () => void;
-}) {
+function Header({ user, onLogin, onLogout }: { user: User | null; onLogin: () => void; onLogout: () => void }) {
 	return (
 		<header className="header">
 			<div className="header-content">
@@ -167,9 +159,7 @@ function Header({
 					{user ? (
 						<div className="user-info">
 							<a href="/profile" className="user-link">
-								{user.picture && (
-									<img src={user.picture} alt={user.name} className="user-avatar" />
-								)}
+								{user.picture && <img src={user.picture} alt={user.name} className="user-avatar" />}
 								<div className="user-details">
 									<span className="user-name">{user.name}</span>
 									<span className="user-email">{user.email}</span>

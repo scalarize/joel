@@ -18,20 +18,16 @@ function getLastLogoutKey(userId: string): string {
  * @param userId 用户 ID
  * @param lastLogoutAt 最后登出时间（ISO 字符串）
  */
-export async function updateUserLastLogoutKV(
-	kv: KVNamespace,
-	userId: string,
-	lastLogoutAt: string
-): Promise<void> {
+export async function updateUserLastLogoutKV(kv: KVNamespace, userId: string, lastLogoutAt: string): Promise<void> {
 	const key = getLastLogoutKey(userId);
 	console.log(`[KV] 更新用户最后登出时间: ${userId}`);
-	
+
 	// 存储到 KV，设置过期时间为 30 天（与 JWT token 过期时间一致）
 	// 这样可以自动清理不再使用的数据
 	await kv.put(key, lastLogoutAt, {
 		expirationTtl: 60 * 60 * 24 * 30, // 30 天
 	});
-	
+
 	console.log(`[KV] 用户最后登出时间已更新到 KV: ${userId}`);
 }
 
@@ -41,18 +37,15 @@ export async function updateUserLastLogoutKV(
  * @param userId 用户 ID
  * @returns 最后登出时间（ISO 字符串），如果不存在则返回 null
  */
-export async function getUserLastLogoutKV(
-	kv: KVNamespace,
-	userId: string
-): Promise<string | null> {
+export async function getUserLastLogoutKV(kv: KVNamespace, userId: string): Promise<string | null> {
 	const key = getLastLogoutKey(userId);
 	const value = await kv.get(key);
-	
+
 	if (value) {
 		console.log(`[KV] 从 KV 获取到用户最后登出时间: ${userId}`);
 		return value;
 	}
-	
+
 	console.log(`[KV] KV 中未找到用户最后登出时间: ${userId}`);
 	return null;
 }
@@ -60,12 +53,8 @@ export async function getUserLastLogoutKV(
 /**
  * 删除用户最后登出时间（用于清理）
  */
-export async function deleteUserLastLogoutKV(
-	kv: KVNamespace,
-	userId: string
-): Promise<void> {
+export async function deleteUserLastLogoutKV(kv: KVNamespace, userId: string): Promise<void> {
 	const key = getLastLogoutKey(userId);
 	await kv.delete(key);
 	console.log(`[KV] 已删除用户最后登出时间: ${userId}`);
 }
-

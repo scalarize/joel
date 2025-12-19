@@ -97,15 +97,15 @@ export default {
 					return handleLogout(request, env);
 				}
 
-			// 管理员 API：获取 Cloudflare 用量数据
-			if (path === '/api/admin/analytics' && request.method === 'GET') {
-				return handleAdminAnalytics(request, env);
-			}
+				// 管理员 API：获取 Cloudflare 用量数据
+				if (path === '/api/admin/analytics' && request.method === 'GET') {
+					return handleAdminAnalytics(request, env);
+				}
 
-			// 管理员 API：获取用户列表
-			if (path === '/api/admin/users' && request.method === 'GET') {
-				return handleAdminUsers(request, env);
-			}
+				// 管理员 API：获取用户列表
+				if (path === '/api/admin/users' && request.method === 'GET') {
+					return handleAdminUsers(request, env);
+				}
 
 				return handleApiNotFound(request, env);
 			}
@@ -253,9 +253,7 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 
 	// 将 state（仅随机部分）存储到 Cookie 用于验证（实际应用中应该使用 KV 或加密存储）
 	const isProduction = request.url.startsWith('https://');
-	const stateCookie = `oauth_state=${state}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${
-		isProduction ? '; Secure' : ''
-	}`;
+	const stateCookie = `oauth_state=${state}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
 
 	const headers = new Headers();
 	headers.set('Location', finalAuthUrl);
@@ -353,21 +351,19 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		// 未来扩展多 OAuth 时，需要改为通过 email 查找或创建用户，并创建 oauth_accounts 记录
 		console.log(`[Callback] 存储用户信息到数据库`);
 		const now = new Date().toISOString();
-		// 先查询用户是否存在
-		const existingUser = await getUserById(env.DB, googleUser.id);
+
+		// 使用 upsertUser 创建或更新用户（已存在的用户会保留自定义的 name 和 picture）
 		const user = await upsertUser(env.DB, {
 			id: googleUser.id, // 当前：直接使用 Google user ID
 			email: googleUser.email,
 			name: googleUser.name,
 			picture: googleUser.picture,
 		});
+
 		// 更新最后登录时间（如果字段存在）
 		if (user) {
 			try {
-				await env.DB
-					.prepare('UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?')
-					.bind(now, now, user.id)
-					.run();
+				await env.DB.prepare('UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?').bind(now, now, user.id).run();
 				console.log(`[Callback] 已更新用户最后登录时间: ${user.email}`);
 			} catch (error) {
 				// 如果字段不存在，记录警告但不影响登录流程
@@ -391,9 +387,7 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		);
 
 		// 清除 state cookie
-		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${
-			isProduction ? '; Secure' : ''
-		}`;
+		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
 
 		console.log(`[Callback] 登录成功，准备重定向到前端页面`);
 
@@ -402,7 +396,7 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		// 2. 如果配置了 FRONTEND_URL，则重定向到前端根路径
 		// 3. 否则退回到当前 Worker 的根路径（兼容旧行为）
 		let targetUrl = env.FRONTEND_URL || '/';
-		
+
 		// 优先使用 state 参数中编码的 redirect URL
 		if (redirectFromState) {
 			try {
@@ -418,13 +412,13 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 				console.warn(`[Callback] state 中的跳转目标 URL 格式无效: ${redirectFromState}`, error);
 			}
 		}
-		
+
 		// 将 JWT token 添加到 URL 参数中
 		// 如果 targetUrl 是相对路径，需要使用 baseUrl 作为基础
 		const targetUrlObj = new URL(targetUrl, baseUrl);
 		targetUrlObj.searchParams.set('token', jwtToken);
 		const finalTargetUrl = targetUrlObj.toString();
-		
+
 		console.log(`[Callback] 重定向目标: ${finalTargetUrl}`);
 
 		// 重定向到目标页面
@@ -433,7 +427,6 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		// 注意：Set-Cookie 不能用逗号拼接，需要多次 append
 		headers.append('Set-Cookie', sessionCookie);
 		headers.append('Set-Cookie', clearStateCookie);
-		
 
 		return new Response(null, {
 			status: 302,
@@ -456,7 +449,7 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 
 	// 尝试从 JWT token 或 Cookie 会话获取用户信息，更新最后登出时间
 	let userId: string | null = null;
-	
+
 	// 优先从 JWT token 获取用户 ID
 	const jwtToken = getJWTFromRequest(request);
 	if (jwtToken) {
@@ -470,7 +463,7 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 			console.warn(`[登出] 解析 JWT token 失败:`, error);
 		}
 	}
-	
+
 	// 如果没有从 token 获取到，尝试从 Cookie 会话获取
 	if (!userId) {
 		const session = getSessionFromRequest(request);
@@ -479,7 +472,7 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 			console.log(`[登出] 从 Cookie 会话获取用户 ID: ${userId}`);
 		}
 	}
-	
+
 	// 更新用户最后登出时间到 KV
 	if (userId) {
 		const now = new Date().toISOString();
@@ -498,7 +491,7 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 	const url = new URL(request.url);
 	const redirectParam = url.searchParams.get('redirect');
 	let targetUrl = '/';
-	
+
 	if (redirectParam) {
 		try {
 			const redirectUrl = new URL(redirectParam, new URL(request.url).origin);
@@ -518,7 +511,7 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 	const redirectUrl = new URL(targetUrl, new URL(request.url).origin);
 	redirectUrl.searchParams.set('logout', '1');
 	const finalTargetUrl = redirectUrl.pathname + redirectUrl.search;
-	
+
 	console.log(`[登出] 清除会话，重定向到: ${finalTargetUrl}`);
 	return new Response(null, {
 		status: 302,
@@ -1033,7 +1026,7 @@ async function handleAdminUsers(request: Request, env: Env): Promise<Response> {
 	try {
 		console.log('[API] /api/admin/users 获取用户列表');
 		const users = await getAllUsers(env.DB);
-		
+
 		console.log(`[API] /api/admin/users 返回 ${users.length} 个用户`);
 		return jsonWithCors(request, env, { users }, 200);
 	} catch (error) {

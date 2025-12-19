@@ -195,6 +195,8 @@
 	color: #666;
 	transition: all 0.2s;
 	margin-bottom: -2px;
+	text-decoration: none;
+	display: inline-block;
 }
 
 .admin-tab:hover {
