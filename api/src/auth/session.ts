@@ -23,10 +23,7 @@ function generateSessionId(): string {
 /**
  * 设置会话 Cookie
  */
-export function setSessionCookie(
-	sessionData: SessionData,
-	isProduction: boolean = false
-): string {
+export function setSessionCookie(sessionData: SessionData, isProduction: boolean = false): string {
 	const sessionId = generateSessionId();
 	// 在实际应用中，应该将 sessionData 存储到 KV 或 D1，这里简化处理
 	// 使用 base64 编码存储（注意：这不是最安全的方式，生产环境建议使用 KV）
@@ -43,9 +40,7 @@ export function setSessionCookie(
 /**
  * 从请求中获取会话数据
  */
-export function getSessionFromRequest(
-	request: Request
-): SessionData | null {
+export function getSessionFromRequest(request: Request): SessionData | null {
 	const cookieHeader = request.headers.get('Cookie');
 	if (!cookieHeader) {
 		console.log(`[会话] 未找到 Cookie`);
@@ -84,10 +79,7 @@ export function getSessionFromRequest(
  * 清除会话 Cookie
  */
 export function clearSessionCookie(isProduction: boolean = false): string {
-	const cookie = `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${
-		isProduction ? '; Secure' : ''
-	}`;
+	const cookie = `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
 	console.log(`[会话] 清除会话 Cookie`);
 	return cookie;
 }
-

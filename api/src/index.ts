@@ -5,6 +5,7 @@
 
 import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
+import { generateJWT, verifyJWT, getJWTFromRequest } from './auth/jwt';
 import { upsertUser, getUserById, updateUserProfile } from './db/schema';
 import { loginTemplate, getDashboardTemplate } from './templates';
 import { checkAdminAccess, isAdminEmail } from './admin/auth';
@@ -36,6 +37,11 @@ interface Env {
 	 * 可以在 Cloudflare Dashboard 右侧边栏找到
 	 */
 	CF_ACCOUNT_ID?: string;
+	/**
+	 * JWT Secret（用于生成和验证 JWT token）
+	 * 生产环境必须配置，建议使用随机字符串
+	 */
+	JWT_SECRET?: string;
 }
 
 export default {
@@ -199,6 +205,11 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 		return new Response('Google OAuth 未配置', { status: 500 });
 	}
 
+	// 获取 redirect 参数（登录后要跳转的页面）
+	const url = new URL(request.url);
+	const redirect = url.searchParams.get('redirect');
+	console.log(`[OAuth] 登录后跳转目标: ${redirect || '未指定'}`);
+
 	// 生成 state 参数（用于 CSRF 防护）
 	const state = generateState();
 	console.log(`[OAuth] 生成 state: ${state.substring(0, 8)}...`);
@@ -210,16 +221,43 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 	// 生成授权 URL
 	const authUrl = generateAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, state);
 
-	// 将 state 存储到 Cookie（实际应用中应该使用 KV 或加密存储）
-	const stateCookie = `oauth_state=${state}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax`;
+	// 将 state 和 redirect 组合编码到 state 参数中（避免使用 Cookie）
+	// 格式：{randomState}|{base64EncodedRedirect}
+	let finalState = state;
+	if (redirect) {
+		// 验证 redirect URL 是否为同源或允许的域名（安全考虑）
+		try {
+			const redirectUrl = new URL(redirect, baseUrl);
+			// 只允许 scalarize.org 域名下的跳转
+			if (redirectUrl.hostname.endsWith('.scalarize.org') || redirectUrl.hostname === 'scalarize.org') {
+				const encodedRedirect = btoa(redirect);
+				finalState = `${state}|${encodedRedirect}`;
+				console.log(`[OAuth] 将跳转目标编码到 state 参数中`);
+			} else {
+				console.warn(`[OAuth] 跳转目标域名不允许: ${redirectUrl.hostname}`);
+			}
+		} catch (error) {
+			console.warn(`[OAuth] 跳转目标 URL 格式无效: ${redirect}`);
+		}
+	}
+
+	// 重新生成授权 URL（使用包含 redirect 的 state）
+	const finalAuthUrl = generateAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, finalState);
+
+	// 将 state（仅随机部分）存储到 Cookie 用于验证（实际应用中应该使用 KV 或加密存储）
+	const isProduction = request.url.startsWith('https://');
+	const stateCookie = `oauth_state=${state}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${
+		isProduction ? '; Secure' : ''
+	}`;
+
+	const headers = new Headers();
+	headers.set('Location', finalAuthUrl);
+	headers.append('Set-Cookie', stateCookie);
 
 	console.log(`[OAuth] 重定向到 Google 授权页面`);
 	return new Response(null, {
 		status: 302,
-		headers: {
-			Location: authUrl,
-			'Set-Cookie': stateCookie,
-		},
+		headers,
 	});
 }
 
@@ -229,6 +267,7 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 async function handleGoogleCallback(request: Request, env: Env): Promise<Response> {
 	console.log(`[Callback] 处理 OAuth 回调`);
 
+	const isProduction = request.url.startsWith('https://');
 	const url = new URL(request.url);
 	const code = url.searchParams.get('code');
 	const state = url.searchParams.get('state');
@@ -256,8 +295,22 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		  }, {} as Record<string, string>)
 		: {};
 
+	// 从 state 参数中提取随机部分和 redirect URL
+	// 格式：{randomState}|{base64EncodedRedirect} 或 {randomState}
+	const stateParts = state.split('|');
+	const randomState = stateParts[0];
+	let redirectFromState: string | null = null;
+	if (stateParts.length > 1) {
+		try {
+			redirectFromState = atob(stateParts[1]);
+			console.log(`[Callback] 从 state 参数中提取到 redirect URL: ${redirectFromState}`);
+		} catch (error) {
+			console.warn(`[Callback] 解析 state 中的 redirect URL 失败:`, error);
+		}
+	}
+
 	const storedState = cookies['oauth_state'];
-	if (!storedState || storedState !== state) {
+	if (!storedState || storedState !== randomState) {
 		console.error(`[Callback] State 验证失败`);
 		return new Response('State 验证失败', { status: 400 });
 	}
@@ -299,8 +352,12 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 			picture: googleUser.picture,
 		});
 
-		// 创建会话
-		const isProduction = request.url.startsWith('https://');
+		// 生成 JWT token
+		console.log(`[Callback] 生成 JWT token`);
+		const jwtToken = await generateJWT(user.id, user.email, user.name, env);
+		console.log(`[Callback] JWT token 生成成功`);
+
+		// 创建会话 Cookie（兼容旧版本）
 		const sessionCookie = setSessionCookie(
 			{
 				userId: user.id,
@@ -311,22 +368,50 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		);
 
 		// 清除 state cookie
-		const clearStateCookie = 'oauth_state=; Path=/; Max-Age=0';
+		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${
+			isProduction ? '; Secure' : ''
+		}`;
 
 		console.log(`[Callback] 登录成功，准备重定向到前端页面`);
 
 		// 计算登录成功后重定向目标：
-		// 1. 如果配置了 FRONTEND_URL，则优先重定向到前端根路径
-		// 2. 否则退回到当前 Worker 的根路径（兼容旧行为）
-		const targetUrl = env.FRONTEND_URL || '/';
-		console.log(`[Callback] 重定向目标: ${targetUrl}`);
+		// 1. 优先使用 Cookie 中存储的 redirect 参数（登录前要访问的页面）
+		// 2. 如果配置了 FRONTEND_URL，则重定向到前端根路径
+		// 3. 否则退回到当前 Worker 的根路径（兼容旧行为）
+		let targetUrl = env.FRONTEND_URL || '/';
+		
+		// 从 Cookie 中读取 redirect 参数
+		const redirectCookie = cookies['oauth_redirect'];
+		if (redirectCookie) {
+			try {
+				const decodedRedirect = decodeURIComponent(redirectCookie);
+				// 验证 redirect URL 是否为同源或允许的域名（安全考虑）
+				const redirectUrl = new URL(decodedRedirect, new URL(request.url).origin);
+				if (redirectUrl.hostname.endsWith('.scalarize.org') || redirectUrl.hostname === 'scalarize.org') {
+					targetUrl = decodedRedirect;
+					console.log(`[Callback] 使用 Cookie 中的跳转目标: ${targetUrl}`);
+				} else {
+					console.warn(`[Callback] Cookie 中的跳转目标域名不允许: ${redirectUrl.hostname}`);
+				}
+			} catch (error) {
+				console.warn(`[Callback] Cookie 中的跳转目标 URL 格式无效: ${redirectCookie}`);
+			}
+		}
+		
+		// 将 JWT token 添加到 URL 参数中
+		const targetUrlObj = new URL(targetUrl);
+		targetUrlObj.searchParams.set('token', jwtToken);
+		const finalTargetUrl = targetUrlObj.toString();
+		
+		console.log(`[Callback] 重定向目标: ${finalTargetUrl}`);
 
-		// 重定向到前端 / 首页
+		// 重定向到目标页面
 		const headers = new Headers();
-		headers.set('Location', targetUrl);
+		headers.set('Location', finalTargetUrl);
 		// 注意：Set-Cookie 不能用逗号拼接，需要多次 append
 		headers.append('Set-Cookie', sessionCookie);
 		headers.append('Set-Cookie', clearStateCookie);
+		
 
 		return new Response(null, {
 			status: 302,
@@ -371,50 +456,76 @@ function handleApiPing(request: Request, env: Env): Response {
 async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/me 请求');
 
+	// 优先尝试从 JWT token 获取用户信息
+	const jwtToken = getJWTFromRequest(request);
+	if (jwtToken) {
+		console.log('[API] /api/me 检测到 JWT token');
+		const payload = await verifyJWT(jwtToken, env);
+		if (payload) {
+			// 从数据库获取完整用户信息
+			const user = await getUserById(env.DB, payload.userId);
+			if (user) {
+				const isAdmin = isAdminEmail(user.email);
+				console.log(`[API] /api/me JWT 验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}`);
+				return jsonWithCors(
+					request,
+					env,
+					{
+						authenticated: true,
+						user: {
+							id: user.id,
+							email: user.email,
+							name: user.name,
+							picture: user.picture ?? null,
+							isAdmin,
+						},
+					},
+					200
+				);
+			} else {
+				console.warn(`[API] /api/me JWT token 有效但数据库未找到用户: ${payload.userId}`);
+			}
+		} else {
+			console.log('[API] /api/me JWT token 验证失败');
+		}
+	}
+
+	// 回退到 Cookie 会话验证（兼容旧版本）
 	const session = getSessionFromRequest(request);
-
-	if (!session) {
-		console.log('[API] /api/me 用户未登录');
-		return jsonWithCors(
-			request,
-			env,
-			{
-				authenticated: false,
-				user: null,
-			},
-			200
-		);
+	if (session) {
+		console.log('[API] /api/me 使用 Cookie 会话验证');
+		// 从数据库获取完整用户信息
+		const user = await getUserById(env.DB, session.userId);
+		if (user) {
+			const isAdmin = isAdminEmail(user.email);
+			console.log(`[API] /api/me Cookie 会话验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}`);
+			return jsonWithCors(
+				request,
+				env,
+				{
+					authenticated: true,
+					user: {
+						id: user.id,
+						email: user.email,
+						name: user.name,
+						picture: user.picture ?? null,
+						isAdmin,
+					},
+				},
+				200
+			);
+		} else {
+			console.warn(`[API] /api/me Cookie 会话存在但数据库未找到用户: ${session.userId}`);
+		}
 	}
 
-	// 从数据库获取完整用户信息
-	const user = await getUserById(env.DB, session.userId);
-	if (!user) {
-		console.warn(`[API] /api/me 会话存在但数据库未找到用户: ${session.userId}`);
-		return jsonWithCors(
-			request,
-			env,
-			{
-				authenticated: false,
-				user: null,
-			},
-			200
-		);
-	}
-
-	const isAdmin = isAdminEmail(user.email);
-	console.log(`[API] /api/me 返回用户信息: ${user.email}, 管理员: ${isAdmin}`);
+	console.log('[API] /api/me 用户未登录');
 	return jsonWithCors(
 		request,
 		env,
 		{
-			authenticated: true,
-			user: {
-				id: user.id,
-				email: user.email,
-				name: user.name,
-				picture: user.picture ?? null,
-				isAdmin,
-			},
+			authenticated: false,
+			user: null,
 		},
 		200
 	);
@@ -832,21 +943,38 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 	const origin = request.headers.get('Origin');
 	let allowedOrigin: string | null = null;
 
-	// 如果配置了前端地址，则只允许该地址
+	// 允许的域名列表（包括 joel 和 gd 项目）
+	const allowedOrigins = [
+		'https://joel.scalarize.org',
+		'https://gd.scalarize.org',
+		'http://localhost:5173', // 开发环境
+		'http://localhost:8787', // Worker 开发环境
+	];
+
+	// 如果配置了前端地址，添加到允许列表
 	if (env.FRONTEND_URL) {
 		try {
 			const frontendOrigin = new URL(env.FRONTEND_URL).origin;
-			if (origin && origin === frontendOrigin) {
-				allowedOrigin = origin;
+			if (!allowedOrigins.includes(frontendOrigin)) {
+				allowedOrigins.push(frontendOrigin);
 			}
 		} catch (error) {
 			console.error('[CORS] 解析 FRONTEND_URL 失败:', error);
 		}
-	} else {
-		// 未配置时，默认只允许同源请求
-		const selfOrigin = new URL(request.url).origin;
-		if (origin && origin === selfOrigin) {
+	}
+
+	// 检查 origin 是否在允许列表中
+	if (origin) {
+		// 允许 scalarize.org 的所有子域名
+		if (origin.endsWith('.scalarize.org') || origin === 'https://scalarize.org') {
 			allowedOrigin = origin;
+		} else if (allowedOrigins.includes(origin)) {
+			allowedOrigin = origin;
+		} else {
+			// 开发环境：允许 localhost
+			if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
+				allowedOrigin = origin;
+			}
 		}
 	}
 
