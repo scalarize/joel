@@ -12,6 +12,7 @@ import {
 } from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
 import { generateJWT, verifyJWT, getJWTFromRequest } from './auth/jwt';
+import { hashPassword, verifyPassword, validatePasswordStrength, generateRandomPassword } from './auth/password';
 import {
 	User,
 	upsertUser,
@@ -26,6 +27,8 @@ import {
 	unlinkOAuthAccount,
 	updateOAuthAccountUserId,
 	deleteUser,
+	updateUserPassword,
+	inviteUser,
 } from './db/schema';
 import { updateUserLastLogoutKV, getUserLastLogoutKV } from './auth/session-kv';
 import { loginTemplate, getDashboardTemplate } from './templates';
@@ -112,6 +115,11 @@ export default {
 					return handleGoogleCallback(request, env);
 				}
 
+				// 密码登录（邀请注册制，仅允许已预设的用户登录）
+				if (path === '/api/auth/login' && request.method === 'POST') {
+					return handlePasswordLogin(request, env);
+				}
+
 				// 登出
 				if (path === '/api/logout' && request.method === 'GET') {
 					return handleLogout(request, env);
@@ -142,6 +150,16 @@ export default {
 				// 管理员 API：获取用户列表
 				if (path === '/api/admin/users' && request.method === 'GET') {
 					return handleAdminUsers(request, env);
+				}
+
+				// 管理员 API：邀请用户
+				if (path === '/api/admin/invite-user' && request.method === 'POST') {
+					return handleAdminInviteUser(request, env);
+				}
+
+				// 修改密码 API
+				if (path === '/api/profile/change-password' && request.method === 'POST') {
+					return handleApiChangePassword(request, env);
 				}
 
 				return handleApiNotFound(request, env);
@@ -622,7 +640,8 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 			const user = await getUserById(env.DB, payload.userId);
 			if (user) {
 				const isAdmin = isAdminEmail(user.email);
-				console.log(`[API] /api/me JWT 验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}`);
+				const mustChangePassword = user.password_must_change === 1;
+				console.log(`[API] /api/me JWT 验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}, 需要修改密码: ${mustChangePassword}`);
 				return jsonWithCors(
 					request,
 					env,
@@ -634,6 +653,7 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 							name: user.name,
 							picture: user.picture ?? null,
 							isAdmin,
+							mustChangePassword,
 						},
 					},
 					200
@@ -654,7 +674,10 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 		const user = await getUserById(env.DB, session.userId);
 		if (user) {
 			const isAdmin = isAdminEmail(user.email);
-			console.log(`[API] /api/me Cookie 会话验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}`);
+			const mustChangePassword = user.password_must_change === 1;
+			console.log(
+				`[API] /api/me Cookie 会话验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}, 需要修改密码: ${mustChangePassword}`
+			);
 			return jsonWithCors(
 				request,
 				env,
@@ -666,6 +689,7 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 						name: user.name,
 						picture: user.picture ?? null,
 						isAdmin,
+						mustChangePassword,
 					},
 				},
 				200
@@ -1463,6 +1487,401 @@ async function handleApiUnlinkOAuth(request: Request, env: Env): Promise<Respons
 			{
 				error: 'Internal Server Error',
 				message: error instanceof Error ? error.message : '解绑 OAuth 账号失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * 处理密码登录（邀请注册制）
+ * 仅允许已预设 email + password 的用户登录
+ */
+async function handlePasswordLogin(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/auth/login POST 请求');
+
+	try {
+		const body = await request.json();
+		const { email, password } = body as { email?: string; password?: string };
+
+		// 验证输入
+		if (!email || !password) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'email 和 password 都是必填项',
+				},
+				400
+			);
+		}
+
+		// 查找用户
+		const user = await getUserByEmail(env.DB, email);
+		if (!user) {
+			// 为了安全，不透露用户是否存在
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Unauthorized',
+					message: '邮箱或密码错误',
+				},
+				401
+			);
+		}
+
+		// 检查用户是否有密码（邀请注册制：只有预设的用户才有密码）
+		if (!user.password_hash) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Unauthorized',
+					message: '该账号未设置密码，请使用 Google OAuth 登录或联系管理员',
+				},
+				401
+			);
+		}
+
+		// 验证密码
+		console.log('[API] /api/auth/login 验证密码');
+		const isValid = await verifyPassword(password, user.password_hash);
+		if (!isValid) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Unauthorized',
+					message: '邮箱或密码错误',
+				},
+				401
+			);
+		}
+
+		// 更新最后登录时间
+		const now = new Date().toISOString();
+		try {
+			await env.DB.prepare('UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?').bind(now, now, user.id).run();
+			console.log('[API] /api/auth/login 已更新用户最后登录时间');
+		} catch (error) {
+			console.warn('[API] /api/auth/login 更新最后登录时间失败:', error);
+		}
+
+		// 生成 JWT token
+		console.log('[API] /api/auth/login 生成 JWT token');
+		const jwtToken = await generateJWT(user.id, user.email, user.name, env);
+
+		// 创建会话 Cookie
+		const isProduction = request.url.startsWith('https://');
+		const sessionCookie = setSessionCookie(
+			{
+				userId: user.id,
+				email: user.email,
+				name: user.name,
+			},
+			isProduction
+		);
+
+		console.log('[API] /api/auth/login 登录成功');
+
+		// 检查是否需要修改密码
+		const mustChangePassword = user.password_must_change === 1;
+		if (mustChangePassword) {
+			console.log('[API] /api/auth/login 用户需要修改密码');
+		}
+
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				user: {
+					id: user.id,
+					email: user.email,
+					name: user.name,
+					picture: user.picture ?? null,
+				},
+				token: jwtToken,
+				mustChangePassword: mustChangePassword, // 标记是否需要修改密码
+			},
+			200,
+			{
+				'Set-Cookie': sessionCookie,
+			}
+		);
+	} catch (error) {
+		console.error('[API] /api/auth/login 登录失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '登录失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 管理员 - 邀请用户
+ */
+async function handleAdminInviteUser(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/admin/invite-user POST 请求');
+
+	// 检查管理员权限
+	const admin = await checkAdminAccess(request, env.DB);
+	if (!admin) {
+		console.log('[API] /api/admin/invite-user 权限不足');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '需要管理员权限',
+			},
+			403
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { email, name } = body as { email?: string; name?: string };
+
+		// 验证输入
+		if (!email || !name) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'email 和 name 都是必填项',
+				},
+				400
+			);
+		}
+
+		// 验证邮箱格式
+		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+		if (!emailRegex.test(email)) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '邮箱格式无效',
+				},
+				400
+			);
+		}
+
+		// 验证 name 长度
+		if (name.trim().length === 0 || name.length > 100) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'name 不能为空且长度不能超过 100 个字符',
+				},
+				400
+			);
+		}
+
+		// 生成随机密码
+		console.log('[API] /api/admin/invite-user 生成随机密码');
+		const randomPassword = generateRandomPassword();
+
+		// 生成密码哈希
+		console.log('[API] /api/admin/invite-user 生成密码哈希');
+		const passwordHash = await hashPassword(randomPassword);
+
+		// 邀请用户（创建或更新用户）
+		console.log('[API] /api/admin/invite-user 邀请用户');
+		const user = await inviteUser(env.DB, email, name.trim(), passwordHash);
+
+		// 创建 OAuth 账号记录（provider='password'）
+		const existingOAuth = await getOAuthAccountByProvider(env.DB, 'password', user.id);
+		if (!existingOAuth) {
+			await linkOAuthAccount(
+				env.DB,
+				user.id,
+				{
+					provider: 'password',
+					provider_user_id: user.id,
+					email: email,
+					name: name.trim(),
+					picture: null,
+				},
+				'manual'
+			);
+		}
+
+		console.log('[API] /api/admin/invite-user 邀请成功');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				user: {
+					id: user.id,
+					email: user.email,
+					name: user.name,
+				},
+				password: randomPassword, // 返回随机密码给管理员
+				message: '用户邀请成功，请将密码告知用户',
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/admin/invite-user 邀请失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '邀请用户失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 修改密码
+ */
+async function handleApiChangePassword(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/profile/change-password POST 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[API] /api/profile/change-password 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { currentPassword, newPassword } = body as { currentPassword?: string; newPassword?: string };
+
+		// 验证输入
+		if (!currentPassword || !newPassword) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'currentPassword 和 newPassword 都是必填项',
+				},
+				400
+			);
+		}
+
+		// 获取用户信息
+		const user = await getUserById(env.DB, session.userId);
+		if (!user) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Not Found',
+					message: '用户不存在',
+				},
+				404
+			);
+		}
+
+		// 检查用户是否有密码
+		if (!user.password_hash) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '该账号未设置密码',
+				},
+				400
+			);
+		}
+
+		// 验证当前密码
+		console.log('[API] /api/profile/change-password 验证当前密码');
+		const isValid = await verifyPassword(currentPassword, user.password_hash);
+		if (!isValid) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Unauthorized',
+					message: '当前密码错误',
+				},
+				401
+			);
+		}
+
+		// 验证新密码强度
+		const passwordError = validatePasswordStrength(newPassword);
+		if (passwordError) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: passwordError,
+				},
+				400
+			);
+		}
+
+		// 检查新密码是否与当前密码相同
+		const isSamePassword = await verifyPassword(newPassword, user.password_hash);
+		if (isSamePassword) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '新密码不能与当前密码相同',
+				},
+				400
+			);
+		}
+
+		// 生成新密码哈希
+		console.log('[API] /api/profile/change-password 生成新密码哈希');
+		const newPasswordHash = await hashPassword(newPassword);
+
+		// 更新密码（清除 must_change 标志）
+		console.log('[API] /api/profile/change-password 更新密码');
+		await updateUserPassword(env.DB, user.id, newPasswordHash, false);
+
+		console.log('[API] /api/profile/change-password 密码修改成功');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				message: '密码修改成功',
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/profile/change-password 修改失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '修改密码失败',
 			},
 			500
 		);

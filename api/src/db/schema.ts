@@ -15,6 +15,8 @@ export interface User {
 	email: string; // 用于多 OAuth 账号关联的关键字段（UNIQUE）
 	name: string; // 显示名称（用户可自定义覆盖）
 	picture?: string; // 头像 URL（用户可自定义覆盖）
+	password_hash?: string; // 密码哈希（可选，用户可以通过 OAuth 或密码登录）
+	password_must_change?: number; // 是否需要修改密码（0 或 1，邀请用户时设置为 1）
 	last_login_at?: string; // 最后登录时间
 	created_at: string;
 	updated_at: string;
@@ -23,7 +25,7 @@ export interface User {
 export interface OAuthAccount {
 	id: string;
 	user_id: string;
-	provider: 'google' | 'qq';
+	provider: 'google' | 'password';
 	provider_user_id: string;
 	email: string | null;
 	name: string | null;
@@ -255,7 +257,7 @@ export async function getAllUsers(db: D1Database): Promise<User[]> {
  */
 export async function getOAuthAccountByProvider(
 	db: D1Database,
-	provider: 'google' | 'qq',
+	provider: 'google' | 'password',
 	providerUserId: string
 ): Promise<OAuthAccount | null> {
 	console.log(`[数据库] 查询 OAuth 账号: ${provider}/${providerUserId}`);
@@ -298,7 +300,7 @@ export async function linkOAuthAccount(
 	db: D1Database,
 	userId: string,
 	oauthData: {
-		provider: 'google' | 'qq';
+		provider: 'google' | 'password';
 		provider_user_id: string;
 		email: string | null;
 		name: string | null;
@@ -395,7 +397,7 @@ export async function findOrCreateUserByEmail(
 	db: D1Database,
 	email: string,
 	oauthData: {
-		provider: 'google' | 'qq';
+		provider: 'google' | 'password';
 		provider_user_id: string;
 		name: string;
 		picture?: string | null;
@@ -469,7 +471,7 @@ export async function findOrCreateUserByEmail(
 export async function unlinkOAuthAccount(
 	db: D1Database,
 	userId: string,
-	provider: 'google' | 'qq'
+	provider: 'google' | 'password'
 ): Promise<void> {
 	console.log(`[数据库] 解绑 OAuth 账号: ${userId}/${provider}`);
 
@@ -520,5 +522,92 @@ export async function deleteUser(db: D1Database, userId: string): Promise<void> 
 		.run();
 
 	console.log(`[数据库] 用户删除成功`);
+}
+
+/**
+ * 更新用户密码
+ */
+export async function updateUserPassword(
+	db: D1Database,
+	userId: string,
+	passwordHash: string,
+	mustChange: boolean = false
+): Promise<void> {
+	console.log(`[数据库] 更新用户密码: ${userId}, 必须修改: ${mustChange}`);
+
+	const now = new Date().toISOString();
+	await db
+		.prepare('UPDATE users SET password_hash = ?, password_must_change = ?, updated_at = ? WHERE id = ?')
+		.bind(passwordHash, mustChange ? 1 : 0, now, userId)
+		.run();
+
+	console.log(`[数据库] 用户密码更新成功`);
+}
+
+/**
+ * 邀请用户（创建用户并设置临时密码）
+ * 注意：如果用户已存在，只更新密码和 must_change 标志
+ */
+export async function inviteUser(
+	db: D1Database,
+	email: string,
+	name: string,
+	passwordHash: string
+): Promise<User> {
+	console.log(`[数据库] 邀请用户: ${email}`);
+
+	const now = new Date().toISOString();
+
+	// 检查用户是否已存在
+	const existingUser = await getUserByEmail(db, email);
+	if (existingUser) {
+		// 用户已存在，更新密码并设置必须修改标志
+		console.log(`[数据库] 用户已存在，更新密码和 must_change 标志`);
+		await updateUserPassword(db, existingUser.id, passwordHash, true);
+		
+		// 更新用户信息
+		await db
+			.prepare('UPDATE users SET name = ?, password_must_change = 1, updated_at = ? WHERE id = ?')
+			.bind(name, now, existingUser.id)
+			.run();
+
+		// 返回更新后的用户
+		const updatedUser = await getUserById(db, existingUser.id);
+		if (!updatedUser) {
+			throw new Error(`[数据库] 更新用户失败: ${email}`);
+		}
+		return updatedUser;
+	}
+
+	// 创建新用户
+	let userId: string;
+	let attempts = 0;
+	do {
+		userId = crypto.randomUUID();
+		const existing = await getUserById(db, userId);
+		if (!existing) {
+			break;
+		}
+		attempts++;
+		if (attempts > 10) {
+			throw new Error('[数据库] 生成用户 ID 失败，重试次数过多');
+		}
+	} while (true);
+
+	const result = await db
+		.prepare(`
+			INSERT INTO users (id, email, name, password_hash, password_must_change, created_at, updated_at)
+			VALUES (?, ?, ?, ?, 1, ?, ?)
+			RETURNING *
+		`)
+		.bind(userId, email, name, passwordHash, now, now)
+		.first<User>();
+
+	if (!result) {
+		throw new Error(`[数据库] 邀请用户失败: ${email}`);
+	}
+
+	console.log(`[数据库] 用户邀请成功: ${email}`);
+	return result;
 }
 

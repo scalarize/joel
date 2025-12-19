@@ -188,6 +188,209 @@ body {
 	margin-bottom: 32px;
 }
 
+.login-method-tabs {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 24px;
+	border-bottom: 1px solid #e0e0e0;
+}
+
+.login-method-tabs button {
+	flex: 1;
+	padding: 12px;
+	background: none;
+	border: none;
+	border-bottom: 2px solid transparent;
+	color: #666;
+	cursor: pointer;
+	font-size: 14px;
+	font-weight: 500;
+	transition: all 0.2s;
+}
+
+.login-method-tabs button:hover {
+	color: #667eea;
+}
+
+.login-method-tabs button.active {
+	color: #667eea;
+	border-bottom-color: #667eea;
+}
+
+.password-login-form {
+	text-align: left;
+}
+
+.password-login-form p {
+	text-align: center;
+	margin-bottom: 24px;
+}
+
+.login-error {
+	background: #fee;
+	color: #c33;
+	padding: 12px;
+	border-radius: 6px;
+	margin-bottom: 16px;
+	font-size: 14px;
+	text-align: center;
+}
+
+.form-group {
+	margin-bottom: 20px;
+}
+
+.form-group label {
+	display: block;
+	margin-bottom: 8px;
+	font-size: 14px;
+	font-weight: 500;
+	color: #333;
+}
+
+.form-group input {
+	width: 100%;
+	padding: 12px;
+	border: 1px solid #dadce0;
+	border-radius: 6px;
+	font-size: 14px;
+	transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+	outline: none;
+	border-color: #667eea;
+}
+
+.form-group input:disabled {
+	background: #f5f5f5;
+	cursor: not-allowed;
+}
+
+.password-login-btn {
+	width: 100%;
+	padding: 12px;
+	background: #667eea;
+	color: white;
+	border: none;
+	border-radius: 6px;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.2s;
+	margin-top: 8px;
+}
+
+.password-login-btn:hover:not(:disabled) {
+	background: #5568d3;
+}
+
+.password-login-btn:disabled {
+	background: #ccc;
+	cursor: not-allowed;
+}
+
+/* 修改密码界面 */
+.change-password-prompt {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	min-height: 60vh;
+}
+
+.change-password-card {
+	background: white;
+	border-radius: 12px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	padding: 48px;
+	max-width: 500px;
+	width: 100%;
+}
+
+.change-password-card h2 {
+	font-size: 28px;
+	margin-bottom: 24px;
+	color: #333;
+	text-align: center;
+}
+
+.change-password-warning {
+	background-color: #fff3cd;
+	border: 1px solid #ffc107;
+	border-radius: 6px;
+	padding: 12px;
+	margin-bottom: 24px;
+	color: #856404;
+	font-size: 14px;
+	text-align: center;
+}
+
+.change-password-form {
+	text-align: left;
+}
+
+.change-password-error {
+	background: #fee;
+	color: #c33;
+	padding: 12px;
+	border-radius: 6px;
+	margin-bottom: 16px;
+	font-size: 14px;
+	text-align: center;
+}
+
+.form-hint {
+	display: block;
+	margin-top: 4px;
+	font-size: 12px;
+	color: #666;
+}
+
+.change-password-btn {
+	width: 100%;
+	padding: 12px;
+	background: #667eea;
+	color: white;
+	border: none;
+	border-radius: 6px;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.2s;
+	margin-top: 8px;
+}
+
+.change-password-btn:hover:not(:disabled) {
+	background: #5568d3;
+}
+
+.change-password-btn:disabled {
+	background: #ccc;
+	cursor: not-allowed;
+}
+
+.change-password-success {
+	text-align: center;
+	padding: 2rem 0;
+}
+
+.change-password-success-icon {
+	font-size: 48px;
+	margin-bottom: 1rem;
+}
+
+.change-password-success-title {
+	font-size: 24px;
+	font-weight: 600;
+	color: #28a745;
+	margin-bottom: 0.5rem;
+}
+
+.change-password-success-text {
+	font-size: 14px;
+	color: #666;
+}
+
 .google-login-btn {
 	display: inline-flex;
 	align-items: center;
