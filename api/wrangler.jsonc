@@ -39,6 +39,12 @@
 			"binding": "ASSETS",
 			"bucket_name": "joel-assets"
 		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "USER_SESSION",
+			"id": "7b103c785ac644b99f2eae19566e46f5"
+		}
 	]
 	/**
 	 * Environment Variables

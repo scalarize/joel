@@ -97,10 +97,14 @@ export async function generateJWT(
 
 /**
  * 验证并解析 JWT Token
+ * @param token JWT token 字符串
+ * @param env 环境变量（包含 JWT_SECRET）
+ * @param db 数据库实例（可选，用于检查用户最后登出时间）
  */
 export async function verifyJWT(
 	token: string,
-	env: { JWT_SECRET?: string }
+	env: { JWT_SECRET?: string },
+	db?: D1Database
 ): Promise<JWTPayload | null> {
 	try {
 		const secret = getJWTSecret(env);
@@ -146,6 +150,35 @@ export async function verifyJWT(
 		if (payloadJson.exp < now) {
 			console.error('[JWT] Token 已过期');
 			return null;
+		}
+
+		// 检查 token 是否有发放时间（iat）
+		if (!payloadJson.iat) {
+			console.error('[JWT] Token 缺少发放时间（iat），视为失效');
+			return null;
+		}
+
+		// 如果提供了数据库，检查用户最后登出时间
+		if (db && payloadJson.userId) {
+			try {
+				const { getUserLastLogout } = await import('../db/schema');
+				const lastLogoutAt = await getUserLastLogout(db, payloadJson.userId);
+				
+				if (lastLogoutAt) {
+					// 将最后登出时间转换为 Unix 时间戳（秒）
+					const lastLogoutTimestamp = Math.floor(new Date(lastLogoutAt).getTime() / 1000);
+					
+					// 如果 token 的发放时间早于最后登出时间，则视为失效
+					if (payloadJson.iat < lastLogoutTimestamp) {
+						console.error(`[JWT] Token 发放时间（${payloadJson.iat}）早于用户最后登出时间（${lastLogoutTimestamp}），视为失效`);
+						return null;
+					}
+				}
+			} catch (error) {
+				console.error('[JWT] 检查用户最后登出时间失败:', error);
+				// 如果检查失败，为了安全起见，拒绝 token
+				return null;
+			}
 		}
 
 		return payloadJson;

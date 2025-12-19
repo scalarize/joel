@@ -6,7 +6,7 @@
 import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
 import { generateJWT, verifyJWT, getJWTFromRequest } from './auth/jwt';
-import { upsertUser, getUserById, updateUserProfile } from './db/schema';
+import { upsertUser, getUserById, updateUserProfile, updateUserLastLogout, getUserLastLogout } from './db/schema';
 import { loginTemplate, getDashboardTemplate } from './templates';
 import { checkAdminAccess, isAdminEmail } from './admin/auth';
 import { getCloudflareUsage } from './admin/analytics';
@@ -375,31 +375,30 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		console.log(`[Callback] 登录成功，准备重定向到前端页面`);
 
 		// 计算登录成功后重定向目标：
-		// 1. 优先使用 Cookie 中存储的 redirect 参数（登录前要访问的页面）
+		// 1. 优先使用 state 参数中编码的 redirect URL（登录前要访问的页面）
 		// 2. 如果配置了 FRONTEND_URL，则重定向到前端根路径
 		// 3. 否则退回到当前 Worker 的根路径（兼容旧行为）
 		let targetUrl = env.FRONTEND_URL || '/';
 		
-		// 从 Cookie 中读取 redirect 参数
-		const redirectCookie = cookies['oauth_redirect'];
-		if (redirectCookie) {
+		// 优先使用 state 参数中编码的 redirect URL
+		if (redirectFromState) {
 			try {
-				const decodedRedirect = decodeURIComponent(redirectCookie);
 				// 验证 redirect URL 是否为同源或允许的域名（安全考虑）
-				const redirectUrl = new URL(decodedRedirect, new URL(request.url).origin);
+				const redirectUrl = new URL(redirectFromState, new URL(request.url).origin);
 				if (redirectUrl.hostname.endsWith('.scalarize.org') || redirectUrl.hostname === 'scalarize.org') {
-					targetUrl = decodedRedirect;
-					console.log(`[Callback] 使用 Cookie 中的跳转目标: ${targetUrl}`);
+					targetUrl = redirectFromState;
+					console.log(`[Callback] 使用 state 中的跳转目标: ${targetUrl}`);
 				} else {
-					console.warn(`[Callback] Cookie 中的跳转目标域名不允许: ${redirectUrl.hostname}`);
+					console.warn(`[Callback] state 中的跳转目标域名不允许: ${redirectUrl.hostname}`);
 				}
 			} catch (error) {
-				console.warn(`[Callback] Cookie 中的跳转目标 URL 格式无效: ${redirectCookie}`);
+				console.warn(`[Callback] state 中的跳转目标 URL 格式无效: ${redirectFromState}`, error);
 			}
 		}
 		
 		// 将 JWT token 添加到 URL 参数中
-		const targetUrlObj = new URL(targetUrl);
+		// 如果 targetUrl 是相对路径，需要使用 baseUrl 作为基础
+		const targetUrlObj = new URL(targetUrl, baseUrl);
 		targetUrlObj.searchParams.set('token', jwtToken);
 		const finalTargetUrl = targetUrlObj.toString();
 		
@@ -431,6 +430,45 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 
 	const isProduction = request.url.startsWith('https://');
 	const clearCookie = clearSessionCookie(isProduction);
+
+	// 尝试从 JWT token 或 Cookie 会话获取用户信息，更新最后登出时间
+	let userId: string | null = null;
+	
+	// 优先从 JWT token 获取用户 ID
+	const jwtToken = getJWTFromRequest(request);
+	if (jwtToken) {
+		try {
+			const payload = await verifyJWT(jwtToken, env);
+			if (payload && payload.userId) {
+				userId = payload.userId;
+				console.log(`[登出] 从 JWT token 获取用户 ID: ${userId}`);
+			}
+		} catch (error) {
+			console.warn(`[登出] 解析 JWT token 失败:`, error);
+		}
+	}
+	
+	// 如果没有从 token 获取到，尝试从 Cookie 会话获取
+	if (!userId) {
+		const session = getSessionFromRequest(request);
+		if (session) {
+			userId = session.userId;
+			console.log(`[登出] 从 Cookie 会话获取用户 ID: ${userId}`);
+		}
+	}
+	
+	// 更新用户最后登出时间
+	if (userId) {
+		try {
+			await updateUserLastLogout(env.DB, userId);
+			console.log(`[登出] 已更新用户最后登出时间: ${userId}`);
+		} catch (error) {
+			console.error(`[登出] 更新用户最后登出时间失败:`, error);
+			// 继续执行退出流程，即使更新失败
+		}
+	} else {
+		console.log(`[登出] 未找到用户信息，跳过更新最后登出时间`);
+	}
 
 	// 获取重定向目标（清除 URL 中的 token 参数）
 	const url = new URL(request.url);
@@ -485,7 +523,7 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	const jwtToken = getJWTFromRequest(request);
 	if (jwtToken) {
 		console.log('[API] /api/me 检测到 JWT token');
-		const payload = await verifyJWT(jwtToken, env);
+		const payload = await verifyJWT(jwtToken, env, env.DB);
 		if (payload) {
 			// 从数据库获取完整用户信息
 			const user = await getUserById(env.DB, payload.userId);
