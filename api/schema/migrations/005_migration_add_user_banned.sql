@@ -1,7 +1,7 @@
 -- 迁移脚本：添加 is_banned 字段（标记用户是否被封禁）
 -- 执行方式：
--- 本地开发：wrangler d1 execute joel-db --local --file=./migration_add_user_banned.sql
--- 生产环境：wrangler d1 execute joel-db --file=./migration_add_user_banned.sql
+-- 本地开发：wrangler d1 execute joel-db --local --file=./schema/migrations/005_migration_add_user_banned.sql
+-- 生产环境：wrangler d1 execute joel-db --file=./schema/migrations/005_migration_add_user_banned.sql
 --
 -- 说明：
 -- 1. is_banned 字段为 INTEGER，0 表示未封禁，1 表示已封禁

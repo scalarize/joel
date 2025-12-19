@@ -1,7 +1,7 @@
 -- 迁移脚本：添加 password_hash 字段支持密码登录（邀请注册制）
 -- 执行方式：
--- 本地开发：wrangler d1 execute joel-db --local --file=./migration_add_password_hash.sql
--- 生产环境：wrangler d1 execute joel-db --file=./migration_add_password_hash.sql
+-- 本地开发：wrangler d1 execute joel-db --local --file=./schema/migrations/003_migration_add_password_hash.sql
+-- 生产环境：wrangler d1 execute joel-db --file=./schema/migrations/003_migration_add_password_hash.sql
 --
 -- 注意：
 -- 1. 此字段为可选字段，用户可以通过 OAuth 登录（不需要密码）

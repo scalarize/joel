@@ -1,7 +1,7 @@
 -- 迁移脚本：多 OAuth 架构支持
 -- 执行方式：
--- 本地开发：wrangler d1 execute joel-db --local --file=./migration_multi_oauth.sql
--- 生产环境：wrangler d1 execute joel-db --file=./migration_multi_oauth.sql
+-- 本地开发：wrangler d1 execute joel-db --local --file=./schema/migrations/001_migration_multi_oauth.sql
+-- 生产环境：wrangler d1 execute joel-db --file=./schema/migrations/001_migration_multi_oauth.sql
 --
 -- 注意：此迁移脚本会：
 -- 1. 创建 oauth_accounts 表

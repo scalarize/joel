@@ -1,7 +1,7 @@
 -- 迁移脚本：添加 password_must_change 字段（标记用户是否需要修改密码）
 -- 执行方式：
--- 本地开发：wrangler d1 execute joel-db --local --file=./migration_add_password_must_change.sql
--- 生产环境：wrangler d1 execute joel-db --file=./migration_add_password_must_change.sql
+-- 本地开发：wrangler d1 execute joel-db --local --file=./schema/migrations/004_migration_add_password_must_change.sql
+-- 生产环境：wrangler d1 execute joel-db --file=./schema/migrations/004_migration_add_password_must_change.sql
 --
 -- 说明：
 -- 1. 邀请用户时，password_must_change 设置为 1（true）
