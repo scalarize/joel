@@ -20,6 +20,23 @@ export interface User {
 	updated_at: string;
 }
 
+export interface OAuthAccount {
+	id: string;
+	user_id: string;
+	provider: 'google' | 'qq';
+	provider_user_id: string;
+	email: string | null;
+	name: string | null;
+	picture: string | null;
+	access_token: string | null;
+	refresh_token: string | null;
+	token_expires_at: string | null;
+	linked_at: string;
+	linked_method: 'auto' | 'manual';
+	created_at: string;
+	updated_at: string;
+}
+
 /**
  * 初始化数据库表结构
  * 需要在首次部署时手动执行，或通过 migration 执行
@@ -231,5 +248,277 @@ export async function getAllUsers(db: D1Database): Promise<User[]> {
 		console.log(`[数据库] 使用回退查询找到 ${users.length} 个用户`);
 		return users;
 	}
+}
+
+/**
+ * 根据 OAuth 提供商和提供商用户 ID 查询 OAuth 账号
+ */
+export async function getOAuthAccountByProvider(
+	db: D1Database,
+	provider: 'google' | 'qq',
+	providerUserId: string
+): Promise<OAuthAccount | null> {
+	console.log(`[数据库] 查询 OAuth 账号: ${provider}/${providerUserId}`);
+	const result = await db
+		.prepare('SELECT * FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?')
+		.bind(provider, providerUserId)
+		.first<OAuthAccount>();
+
+	if (result) {
+		console.log(`[数据库] 找到 OAuth 账号，关联到用户: ${result.user_id}`);
+	} else {
+		console.log(`[数据库] 未找到 OAuth 账号: ${provider}/${providerUserId}`);
+	}
+
+	return result || null;
+}
+
+/**
+ * 根据用户 ID 查询所有关联的 OAuth 账号
+ */
+export async function getOAuthAccountsByUserId(
+	db: D1Database,
+	userId: string
+): Promise<OAuthAccount[]> {
+	console.log(`[数据库] 查询用户的所有 OAuth 账号: ${userId}`);
+	const result = await db
+		.prepare('SELECT * FROM oauth_accounts WHERE user_id = ? ORDER BY linked_at DESC')
+		.bind(userId)
+		.all<OAuthAccount>();
+
+	const accounts = result.results || [];
+	console.log(`[数据库] 找到 ${accounts.length} 个 OAuth 账号`);
+	return accounts;
+}
+
+/**
+ * 关联 OAuth 账号到用户
+ */
+export async function linkOAuthAccount(
+	db: D1Database,
+	userId: string,
+	oauthData: {
+		provider: 'google' | 'qq';
+		provider_user_id: string;
+		email: string | null;
+		name: string | null;
+		picture: string | null;
+		access_token?: string | null;
+		refresh_token?: string | null;
+		token_expires_at?: string | null;
+	},
+	linkedMethod: 'auto' | 'manual' = 'auto'
+): Promise<OAuthAccount> {
+	console.log(`[数据库] 关联 OAuth 账号到用户: ${userId}, 提供商: ${oauthData.provider}`);
+
+	const now = new Date().toISOString();
+	const oauthAccountId = crypto.randomUUID();
+
+	// 检查是否已存在该 OAuth 账号
+	const existing = await getOAuthAccountByProvider(db, oauthData.provider, oauthData.provider_user_id);
+	if (existing) {
+		// 更新现有 OAuth 账号
+		console.log(`[数据库] OAuth 账号已存在，更新信息`);
+		const result = await db
+			.prepare(`
+				UPDATE oauth_accounts 
+				SET user_id = ?, email = ?, name = ?, picture = ?, 
+				    access_token = ?, refresh_token = ?, token_expires_at = ?,
+				    linked_method = ?, updated_at = ?
+				WHERE provider = ? AND provider_user_id = ?
+				RETURNING *
+			`)
+			.bind(
+				userId,
+				oauthData.email,
+				oauthData.name,
+				oauthData.picture,
+				oauthData.access_token || null,
+				oauthData.refresh_token || null,
+				oauthData.token_expires_at || null,
+				linkedMethod,
+				now,
+				oauthData.provider,
+				oauthData.provider_user_id
+			)
+			.first<OAuthAccount>();
+
+		if (!result) {
+			throw new Error(`[数据库] 更新 OAuth 账号失败`);
+		}
+
+		console.log(`[数据库] OAuth 账号更新成功`);
+		return result;
+	}
+
+	// 创建新的 OAuth 账号记录
+	const result = await db
+		.prepare(`
+			INSERT INTO oauth_accounts 
+			(id, user_id, provider, provider_user_id, email, name, picture,
+			 access_token, refresh_token, token_expires_at, linked_at, linked_method, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			RETURNING *
+		`)
+		.bind(
+			oauthAccountId,
+			userId,
+			oauthData.provider,
+			oauthData.provider_user_id,
+			oauthData.email,
+			oauthData.name,
+			oauthData.picture,
+			oauthData.access_token || null,
+			oauthData.refresh_token || null,
+			oauthData.token_expires_at || null,
+			now,
+			linkedMethod,
+			now,
+			now
+		)
+		.first<OAuthAccount>();
+
+	if (!result) {
+		throw new Error(`[数据库] 创建 OAuth 账号失败`);
+	}
+
+	console.log(`[数据库] OAuth 账号创建成功`);
+	return result;
+}
+
+/**
+ * 通过邮箱查找或创建用户（支持自动关联）
+ * 如果找到相同邮箱的用户，将 OAuth 账号关联到该用户
+ * 如果找不到，创建新用户
+ */
+export async function findOrCreateUserByEmail(
+	db: D1Database,
+	email: string,
+	oauthData: {
+		provider: 'google' | 'qq';
+		provider_user_id: string;
+		name: string;
+		picture?: string | null;
+		access_token?: string | null;
+		refresh_token?: string | null;
+		token_expires_at?: string | null;
+	}
+): Promise<{ user: User; isNewUser: boolean; linkedMethod: 'auto' | 'manual' }> {
+	console.log(`[数据库] 通过邮箱查找或创建用户: ${email}`);
+
+	// 检查该 OAuth 账号是否已关联到其他用户
+	const existingOAuth = await getOAuthAccountByProvider(db, oauthData.provider, oauthData.provider_user_id);
+	if (existingOAuth) {
+		// OAuth 账号已存在，返回关联的用户
+		const user = await getUserById(db, existingOAuth.user_id);
+		if (!user) {
+			throw new Error(`[数据库] OAuth 账号关联的用户不存在: ${existingOAuth.user_id}`);
+		}
+		console.log(`[数据库] OAuth 账号已关联到用户: ${user.id}`);
+		return { user, isNewUser: false, linkedMethod: existingOAuth.linked_method };
+	}
+
+	// 查找是否存在相同邮箱的用户
+	const existingUser = await getUserByEmail(db, email);
+	if (existingUser) {
+		// 找到相同邮箱的用户，自动关联 OAuth 账号
+		console.log(`[数据库] 找到相同邮箱的用户，自动关联 OAuth 账号`);
+		await linkOAuthAccount(db, existingUser.id, {
+			provider: oauthData.provider,
+			provider_user_id: oauthData.provider_user_id,
+			email: email,
+			name: oauthData.name,
+			picture: oauthData.picture,
+			access_token: oauthData.access_token,
+			refresh_token: oauthData.refresh_token,
+			token_expires_at: oauthData.token_expires_at,
+		}, 'auto');
+		return { user: existingUser, isNewUser: false, linkedMethod: 'auto' };
+	}
+
+	// 未找到相同邮箱的用户，创建新用户
+	// 注意：当前架构下，users.id 仍然使用 provider_user_id（向后兼容）
+	// 未来可以改为 UUID
+	console.log(`[数据库] 未找到相同邮箱的用户，创建新用户`);
+	const newUser = await upsertUser(db, {
+		id: oauthData.provider_user_id, // 暂时使用 provider_user_id
+		email: email,
+		name: oauthData.name,
+		picture: oauthData.picture || undefined,
+	});
+
+	// 创建 OAuth 账号记录
+	await linkOAuthAccount(db, newUser.id, {
+		provider: oauthData.provider,
+		provider_user_id: oauthData.provider_user_id,
+		email: email,
+		name: oauthData.name,
+		picture: oauthData.picture,
+		access_token: oauthData.access_token,
+		refresh_token: oauthData.refresh_token,
+		token_expires_at: oauthData.token_expires_at,
+	}, 'manual');
+
+	return { user: newUser, isNewUser: true, linkedMethod: 'manual' };
+}
+
+/**
+ * 解绑 OAuth 账号
+ * 注意：需要确保用户至少保留一个 OAuth 账号
+ */
+export async function unlinkOAuthAccount(
+	db: D1Database,
+	userId: string,
+	provider: 'google' | 'qq'
+): Promise<void> {
+	console.log(`[数据库] 解绑 OAuth 账号: ${userId}/${provider}`);
+
+	// 检查用户是否还有其他 OAuth 账号
+	const accounts = await getOAuthAccountsByUserId(db, userId);
+	if (accounts.length <= 1) {
+		throw new Error(`[数据库] 无法解绑最后一个 OAuth 账号`);
+	}
+
+	// 删除 OAuth 账号记录
+	await db
+		.prepare('DELETE FROM oauth_accounts WHERE user_id = ? AND provider = ?')
+		.bind(userId, provider)
+		.run();
+
+	console.log(`[数据库] OAuth 账号解绑成功`);
+}
+
+/**
+ * 更新 OAuth 账号的 user_id（用于账号合并）
+ */
+export async function updateOAuthAccountUserId(
+	db: D1Database,
+	oauthAccountId: string,
+	newUserId: string
+): Promise<void> {
+	console.log(`[数据库] 更新 OAuth 账号的 user_id: ${oauthAccountId} -> ${newUserId}`);
+
+	const now = new Date().toISOString();
+	await db
+		.prepare('UPDATE oauth_accounts SET user_id = ?, updated_at = ? WHERE id = ?')
+		.bind(newUserId, now, oauthAccountId)
+		.run();
+
+	console.log(`[数据库] OAuth 账号 user_id 更新成功`);
+}
+
+/**
+ * 删除用户（用于账号合并）
+ * 注意：由于外键 CASCADE，关联的 oauth_accounts 会自动删除
+ */
+export async function deleteUser(db: D1Database, userId: string): Promise<void> {
+	console.log(`[数据库] 删除用户: ${userId}`);
+
+	await db
+		.prepare('DELETE FROM users WHERE id = ?')
+		.bind(userId)
+		.run();
+
+	console.log(`[数据库] 用户删除成功`);
 }
 

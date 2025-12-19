@@ -205,6 +205,29 @@ body {
 	height: 20px;
 }
 
+.legal-links {
+	margin-top: 24px;
+	font-size: 12px;
+	color: #666;
+	text-align: center;
+}
+
+.legal-links a {
+	color: #667eea;
+	text-decoration: none;
+	transition: opacity 0.2s;
+}
+
+.legal-links a:hover {
+	opacity: 0.8;
+	text-decoration: underline;
+}
+
+.legal-separator {
+	margin: 0 8px;
+	color: #999;
+}
+
 /* Dashboard */
 .dashboard {
 	width: 100%;

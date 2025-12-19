@@ -153,6 +153,7 @@ function Header({ user, onLogin, onLogout }: { user: User | null; onLogin: () =>
 		<header className="header">
 			<div className="header-content">
 				<a href="/" className="logo">
+					<img src="/joel.png" alt="Joel" className="logo-icon" />
 					<h1>Joel</h1>
 				</a>
 				<div className="user-section">
@@ -184,7 +185,7 @@ function LoginPrompt({ onLogin }: { onLogin: () => void }) {
 	return (
 		<div className="login-prompt">
 			<div className="login-card">
-				<h2>欢迎使用 Joel</h2>
+				<h2>欢迎使用 Joel 工作台</h2>
 				<p>请使用 Google 账号登录以访问功能模块</p>
 				<button onClick={onLogin} className="google-login-btn">
 					<svg className="google-icon" viewBox="0 0 24 24">
@@ -207,6 +208,15 @@ function LoginPrompt({ onLogin }: { onLogin: () => void }) {
 					</svg>
 					使用 Google 登录
 				</button>
+				<div className="legal-links">
+					<a href="/legal/privacy-policy.html" target="_blank" rel="noopener noreferrer">
+						隐私政策
+					</a>
+					<span className="legal-separator">·</span>
+					<a href="/legal/terms-of-service.html" target="_blank" rel="noopener noreferrer">
+						服务条款
+					</a>
+				</div>
 			</div>
 		</div>
 	);

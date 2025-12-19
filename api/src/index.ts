@@ -1,12 +1,32 @@
 /**
  * Joel - Cloudflare Worker 主入口
  * 支持 Google OAuth 登录和用户信息管理
+ * 架构支持多 OAuth 提供商（预留扩展）
  */
 
-import { generateAuthUrl, generateState, exchangeCodeForToken, getUserInfo } from './auth/google';
+import {
+	generateAuthUrl as generateGoogleAuthUrl,
+	generateState,
+	exchangeCodeForToken as exchangeGoogleCodeForToken,
+	getUserInfo as getGoogleUserInfo,
+} from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
 import { generateJWT, verifyJWT, getJWTFromRequest } from './auth/jwt';
-import { upsertUser, getUserById, updateUserProfile, getAllUsers } from './db/schema';
+import {
+	User,
+	upsertUser,
+	getUserById,
+	getUserByEmail,
+	updateUserProfile,
+	getAllUsers,
+	findOrCreateUserByEmail,
+	getOAuthAccountByProvider,
+	getOAuthAccountsByUserId,
+	linkOAuthAccount,
+	unlinkOAuthAccount,
+	updateOAuthAccountUserId,
+	deleteUser,
+} from './db/schema';
 import { updateUserLastLogoutKV, getUserLastLogoutKV } from './auth/session-kv';
 import { loginTemplate, getDashboardTemplate } from './templates';
 import { checkAdminAccess, isAdminEmail } from './admin/auth';
@@ -95,6 +115,23 @@ export default {
 				// 登出
 				if (path === '/api/logout' && request.method === 'GET') {
 					return handleLogout(request, env);
+				}
+
+				// OAuth 账号管理 API
+				if (path === '/api/profile/oauth-accounts' && request.method === 'GET') {
+					return handleApiGetOAuthAccounts(request, env);
+				}
+
+				if (path === '/api/profile/link-oauth' && request.method === 'POST') {
+					return handleApiLinkOAuth(request, env);
+				}
+
+				if (path === '/api/profile/merge-accounts' && request.method === 'POST') {
+					return handleApiMergeAccounts(request, env);
+				}
+
+				if (path === '/api/profile/unlink-oauth' && request.method === 'POST') {
+					return handleApiUnlinkOAuth(request, env);
 				}
 
 				// 管理员 API：获取 Cloudflare 用量数据
@@ -226,7 +263,7 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 	const redirectUri = `${baseUrl}/api/auth/google/callback`;
 
 	// 生成授权 URL
-	const authUrl = generateAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, state);
+	const authUrl = generateGoogleAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, state);
 
 	// 将 state 和 redirect 组合编码到 state 参数中（避免使用 Cookie）
 	// 格式：{randomState}|{base64EncodedRedirect}
@@ -249,7 +286,7 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 	}
 
 	// 重新生成授权 URL（使用包含 redirect 的 state）
-	const finalAuthUrl = generateAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, finalState);
+	const finalAuthUrl = generateGoogleAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, finalState);
 
 	// 将 state（仅随机部分）存储到 Cookie 用于验证（实际应用中应该使用 KV 或加密存储）
 	const isProduction = request.url.startsWith('https://');
@@ -335,40 +372,79 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 	try {
 		// 交换授权码获取访问令牌
 		console.log(`[Callback] 交换授权码获取 token`);
-		const tokenResponse = await exchangeCodeForToken(code, env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, redirectUri);
+		const tokenResponse = await exchangeGoogleCodeForToken(code, env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, redirectUri);
 
 		// 获取用户信息
 		console.log(`[Callback] 获取用户信息`);
-		const googleUser = await getUserInfo(tokenResponse.access_token);
+		const googleUser = await getGoogleUserInfo(tokenResponse.access_token);
 
 		// 验证邮箱
 		if (!googleUser.verified_email) {
 			console.warn(`[Callback] 用户邮箱未验证: ${googleUser.email}`);
 		}
 
-		// 存储用户信息到数据库
-		// 注意：当前架构使用 Google user ID 作为主键
-		// 未来扩展多 OAuth 时，需要改为通过 email 查找或创建用户，并创建 oauth_accounts 记录
-		console.log(`[Callback] 存储用户信息到数据库`);
+		// 使用新的多 OAuth 架构：通过邮箱查找或创建用户，并关联 OAuth 账号
+		console.log(`[Callback] 使用多 OAuth 架构处理用户登录`);
 		const now = new Date().toISOString();
 
-		// 使用 upsertUser 创建或更新用户（已存在的用户会保留自定义的 name 和 picture）
-		const user = await upsertUser(env.DB, {
-			id: googleUser.id, // 当前：直接使用 Google user ID
-			email: googleUser.email,
-			name: googleUser.name,
-			picture: googleUser.picture,
-		});
+		// 检查该 Google 账号是否已存在 OAuth 记录（用于迁移现有用户）
+		const existingOAuth = await getOAuthAccountByProvider(env.DB, 'google', googleUser.id);
+
+		let user: User;
+		let isNewUser: boolean;
+		let linkedMethod: 'auto' | 'manual';
+
+		if (existingOAuth) {
+			// OAuth 账号已存在，直接使用关联的用户
+			const existingUser = await getUserById(env.DB, existingOAuth.user_id);
+			if (!existingUser) {
+				throw new Error(`[Callback] OAuth 账号关联的用户不存在: ${existingOAuth.user_id}`);
+			}
+			user = existingUser;
+			isNewUser = false;
+			linkedMethod = existingOAuth.linked_method;
+
+			// 更新 OAuth 账号的 token 信息
+			await linkOAuthAccount(
+				env.DB,
+				user.id,
+				{
+					provider: 'google',
+					provider_user_id: googleUser.id,
+					email: googleUser.email,
+					name: googleUser.name,
+					picture: googleUser.picture || null,
+					access_token: tokenResponse.access_token,
+					refresh_token: tokenResponse.refresh_token || null,
+					token_expires_at: tokenResponse.expires_in ? new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString() : null,
+				},
+				linkedMethod
+			);
+		} else {
+			// 使用新的多 OAuth 架构：通过邮箱查找或创建用户，并关联 OAuth 账号
+			const result = await findOrCreateUserByEmail(env.DB, googleUser.email, {
+				provider: 'google',
+				provider_user_id: googleUser.id,
+				name: googleUser.name,
+				picture: googleUser.picture || null,
+				access_token: tokenResponse.access_token,
+				refresh_token: tokenResponse.refresh_token || null,
+				token_expires_at: tokenResponse.expires_in ? new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString() : null,
+			});
+			user = result.user;
+			isNewUser = result.isNewUser;
+			linkedMethod = result.linkedMethod;
+		}
+
+		console.log(`[Callback] 用户处理完成，用户 ID: ${user.id}, 是否新用户: ${isNewUser}, 关联方式: ${linkedMethod}`);
 
 		// 更新最后登录时间（如果字段存在）
-		if (user) {
-			try {
-				await env.DB.prepare('UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?').bind(now, now, user.id).run();
-				console.log(`[Callback] 已更新用户最后登录时间: ${user.email}`);
-			} catch (error) {
-				// 如果字段不存在，记录警告但不影响登录流程
-				console.warn(`[Callback] 更新最后登录时间失败（可能是字段不存在）:`, error);
-			}
+		try {
+			await env.DB.prepare('UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?').bind(now, now, user.id).run();
+			console.log(`[Callback] 已更新用户最后登录时间: ${user.email}`);
+		} catch (error) {
+			// 如果字段不存在，记录警告但不影响登录流程
+			console.warn(`[Callback] 更新最后登录时间失败（可能是字段不存在）:`, error);
 		}
 
 		// 生成 JWT token
@@ -1046,9 +1122,14 @@ async function handleAdminUsers(request: Request, env: Env): Promise<Response> {
 /**
  * 带 CORS 的 JSON 响应工具函数
  */
-function jsonWithCors(request: Request, env: Env, data: unknown, status: number): Response {
+function jsonWithCors(request: Request, env: Env, data: unknown, status: number, extraHeaders?: Record<string, string>): Response {
 	const headers = getCorsHeaders(request, env);
 	headers.set('Content-Type', 'application/json; charset=utf-8');
+	if (extraHeaders) {
+		for (const [key, value] of Object.entries(extraHeaders)) {
+			headers.append(key, value);
+		}
+	}
 	return new Response(JSON.stringify(data), {
 		status,
 		headers,
@@ -1096,4 +1177,294 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 	headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,DELETE,OPTIONS');
 
 	return headers;
+}
+
+/**
+ * API: 获取用户关联的所有 OAuth 账号
+ */
+async function handleApiGetOAuthAccounts(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/profile/oauth-accounts GET 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[API] /api/profile/oauth-accounts 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	try {
+		const accounts = await getOAuthAccountsByUserId(env.DB, session.userId);
+		console.log(`[API] /api/profile/oauth-accounts 返回 ${accounts.length} 个 OAuth 账号`);
+
+		// 只返回必要的字段，不返回敏感信息（access_token 等）
+		const safeAccounts = accounts.map((account) => ({
+			provider: account.provider,
+			email: account.email,
+			name: account.name,
+			picture: account.picture,
+			linked_at: account.linked_at,
+			linked_method: account.linked_method,
+		}));
+
+		return jsonWithCors(request, env, { accounts: safeAccounts }, 200);
+	} catch (error) {
+		console.error('[API] /api/profile/oauth-accounts 获取失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '获取 OAuth 账号列表失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 手动关联新的 OAuth 账号
+ */
+async function handleApiLinkOAuth(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/profile/link-oauth POST 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[API] /api/profile/link-oauth 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { provider } = body as { provider: 'google' | string };
+
+		// 暂时只支持 Google，未来可以扩展其他提供商
+		if (!provider || provider !== 'google') {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '目前只支持 "google" 提供商',
+				},
+				400
+			);
+		}
+
+		// 检查该 OAuth 是否已关联
+		const existingAccounts = await getOAuthAccountsByUserId(env.DB, session.userId);
+		const alreadyLinked = existingAccounts.some((acc) => acc.provider === provider);
+		if (alreadyLinked) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '该 Google 账号已关联',
+				},
+				400
+			);
+		}
+
+		// 生成授权 URL，跳转到 OAuth 授权页面
+		// 注意：这里需要在 state 中编码当前用户 ID，以便回调时知道是手动关联
+		const baseUrl = env.BASE_URL || new URL(request.url).origin;
+		const state = generateState();
+		const linkState = `${state}|link|${session.userId}`; // 格式：{randomState}|link|{userId}
+
+		const redirectUri = `${baseUrl}/api/auth/google/callback?link=true`;
+		const authUrl = generateGoogleAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, linkState);
+
+		// 将 state 存储到 Cookie
+		const isProduction = request.url.startsWith('https://');
+		const stateCookie = `oauth_state=${state}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
+
+		return jsonWithCors(
+			request,
+			env,
+			{
+				auth_url: authUrl,
+			},
+			200,
+			{
+				'Set-Cookie': stateCookie,
+			}
+		);
+	} catch (error) {
+		console.error('[API] /api/profile/link-oauth 处理失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '关联 OAuth 账号失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 合并账号（将 OAuth 账号从其他用户合并到当前用户）
+ */
+async function handleApiMergeAccounts(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/profile/merge-accounts POST 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[API] /api/profile/merge-accounts 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { source_user_id } = body as { source_user_id: string };
+
+		if (!source_user_id) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'source_user_id 不能为空',
+				},
+				400
+			);
+		}
+
+		// 检查源用户是否存在
+		const sourceUser = await getUserById(env.DB, source_user_id);
+		if (!sourceUser) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Not Found',
+					message: '源用户不存在',
+				},
+				404
+			);
+		}
+
+		// 获取源用户的所有 OAuth 账号
+		const sourceOAuthAccounts = await getOAuthAccountsByUserId(env.DB, source_user_id);
+
+		// 将源用户的所有 OAuth 账号关联到当前用户
+		for (const oauthAccount of sourceOAuthAccounts) {
+			await updateOAuthAccountUserId(env.DB, oauthAccount.id, session.userId);
+		}
+
+		// 删除源用户（由于外键 CASCADE，关联的 oauth_accounts 会自动删除）
+		await deleteUser(env.DB, source_user_id);
+
+		console.log(`[API] /api/profile/merge-accounts 账号合并成功: ${source_user_id} -> ${session.userId}`);
+
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				message: '账号合并成功',
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/profile/merge-accounts 处理失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '合并账号失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 解绑 OAuth 账号
+ */
+async function handleApiUnlinkOAuth(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/profile/unlink-oauth POST 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[API] /api/profile/unlink-oauth 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { provider } = body as { provider: 'google' | string };
+
+		// 暂时只支持 Google，未来可以扩展其他提供商
+		if (!provider || provider !== 'google') {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '目前只支持 "google" 提供商',
+				},
+				400
+			);
+		}
+
+		// 解绑 OAuth 账号（函数内部会检查是否至少保留一个账号）
+		await unlinkOAuthAccount(env.DB, session.userId, provider);
+
+		console.log(`[API] /api/profile/unlink-oauth 解绑成功: ${provider}`);
+
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				message: '解绑成功',
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/profile/unlink-oauth 处理失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '解绑 OAuth 账号失败',
+			},
+			500
+		);
+	}
 }
