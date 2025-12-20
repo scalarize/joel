@@ -641,6 +641,7 @@ export async function getUserModulePermissions(
 /**
  * 检查用户是否有某个模块的访问权限
  * profile 模块所有人可访问，admin 模块只有管理员可访问
+ * 管理员自动拥有所有模块的访问权限
  */
 export async function hasModulePermission(
 	db: D1Database,
@@ -648,6 +649,11 @@ export async function hasModulePermission(
 	moduleId: string,
 	isAdmin: boolean
 ): Promise<boolean> {
+	// 管理员自动拥有所有模块的访问权限
+	if (isAdmin) {
+		return true;
+	}
+	
 	// profile 模块所有人可访问
 	if (moduleId === 'profile') {
 		return true;
@@ -655,7 +661,7 @@ export async function hasModulePermission(
 	
 	// admin 模块只有管理员可访问
 	if (moduleId === 'admin') {
-		return isAdmin;
+		return false; // 非管理员不能访问
 	}
 	
 	// favor 和 gd 需要检查授权

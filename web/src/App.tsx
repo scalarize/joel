@@ -463,6 +463,11 @@ function Dashboard({
 
 	// 根据用户权限过滤模块
 	const visibleModules = modules.filter((module) => {
+		// 管理员自动拥有所有模块的访问权限
+		if (user?.isAdmin === true) {
+			return true;
+		}
+		
 		// profile 模块所有人可访问
 		if (module.id === 'profile') {
 			return true;
@@ -470,7 +475,7 @@ function Dashboard({
 		
 		// admin 模块只有管理员可访问
 		if (module.id === 'admin') {
-			return user?.isAdmin === true;
+			return false; // 非管理员不能访问
 		}
 		
 		// favor 和 gd 需要检查授权
