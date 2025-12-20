@@ -55,6 +55,22 @@ function App() {
 		checkAuth();
 	}, []);
 
+	// 检查登录成功后是否有 redirect 参数需要处理
+	useEffect(() => {
+		if (user && !loading) {
+			const url = new URL(window.location.href);
+			const redirectParam = url.searchParams.get('redirect');
+			
+			// 如果用户已登录且有 redirect 参数，跳转到 SSO 处理
+			if (redirectParam && window.location.pathname !== '/sso') {
+				console.log('[前端] 检测到 redirect 参数，跳转到 SSO 处理');
+				const ssoUrl = new URL('/sso', window.location.origin);
+				ssoUrl.searchParams.set('redirect', redirectParam);
+				window.location.href = ssoUrl.toString();
+			}
+		}
+	}, [user, loading]);
+
 	const loadModulePermissions = async () => {
 		try {
 			const response = await fetch('/api/profile/modules', {
@@ -149,6 +165,11 @@ function App() {
 
 	// 简单的路由处理
 	const path = window.location.pathname;
+
+	// 处理 SSO 路由
+	if (path === '/sso') {
+		return <SSOHandler user={user} />;
+	}
 
 	// 如果用户需要修改密码，强制显示修改密码界面（除非已经在修改密码页面）
 	if (user && user.mustChangePassword && path !== '/change-password') {
@@ -645,6 +666,85 @@ function ChangePasswordPrompt({ user, onPasswordChanged }: { user: User; onPassw
 					</button>
 				</form>
 			</div>
+		</div>
+	);
+}
+
+/**
+ * SSO 处理器 - 用于跨域 JWT token 传递
+ * 1. 若已登录，将 localStorage 里的 jwt token 传过去
+ * 2. redirect url 必须是 allowedDomain (*.scalarize.org 或 *.scalarize.cn)
+ * 3. 若未登录，自动跳到登录页
+ */
+function SSOHandler({ user }: { user: User | null }) {
+	useEffect(() => {
+		const url = new URL(window.location.href);
+		const redirectParam = url.searchParams.get('redirect');
+
+		// 检查是否有 redirect 参数
+		if (!redirectParam) {
+			console.error('[SSO] 缺少 redirect 参数');
+			alert('缺少 redirect 参数');
+			window.location.href = '/';
+			return;
+		}
+
+		// 验证 redirect URL 是否来自允许的域名
+		let redirectUrl: URL;
+		try {
+			redirectUrl = new URL(redirectParam);
+		} catch (error) {
+			console.error('[SSO] redirect 参数格式无效');
+			alert('redirect 参数格式无效');
+			window.location.href = '/';
+			return;
+		}
+
+		// 验证域名：必须是 *.scalarize.org 或 *.scalarize.cn
+		const isAllowedDomain =
+			redirectUrl.hostname.endsWith('.scalarize.org') ||
+			redirectUrl.hostname === 'scalarize.org' ||
+			redirectUrl.hostname.endsWith('.scalarize.cn') ||
+			redirectUrl.hostname === 'scalarize.cn';
+
+		if (!isAllowedDomain) {
+			console.error(`[SSO] redirect URL 域名不允许: ${redirectUrl.hostname}`);
+			alert('redirect URL 域名不允许');
+			window.location.href = '/';
+			return;
+		}
+
+		// 检查用户是否已登录
+		if (!user) {
+			console.log('[SSO] 用户未登录，重定向到登录页面');
+			// 未登录，重定向到登录页面（前端页面），并传递 redirect 参数
+			const loginUrl = new URL('/', window.location.origin);
+			loginUrl.searchParams.set('redirect', redirectParam);
+			window.location.href = loginUrl.toString();
+			return;
+		}
+
+		// 用户已登录，从 localStorage 获取 JWT token
+		const jwtToken = localStorage.getItem('jwt_token');
+		if (!jwtToken) {
+			console.warn('[SSO] 用户已登录但 localStorage 中没有 JWT token，重定向到登录页面');
+			// 没有 token，重定向到登录页面
+			const loginUrl = new URL('/', window.location.origin);
+			loginUrl.searchParams.set('redirect', redirectParam);
+			window.location.href = loginUrl.toString();
+			return;
+		}
+
+		// 将 JWT token 添加到 redirect URL 的参数中
+		redirectUrl.searchParams.set('token', jwtToken);
+
+		console.log(`[SSO] 重定向到 ${redirectUrl.toString()}`);
+		window.location.href = redirectUrl.toString();
+	}, [user]);
+
+	return (
+		<div className="app">
+			<div className="loading">正在跳转...</div>
 		</div>
 	);
 }

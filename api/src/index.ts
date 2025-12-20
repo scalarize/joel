@@ -205,6 +205,11 @@ export default {
 				return handleIndex(request, env);
 			}
 
+			// JWT token 传递接口（用于跨域身份验证）
+			if (path === '/auth' && request.method === 'GET') {
+				return handleAuth(request, env);
+			}
+
 			// 兼容旧路径（重定向到新路径）
 			if (path === '/auth/google' && request.method === 'GET') {
 				console.log('[兼容] 旧路径 /auth/google 重定向到 /api/auth/google');
@@ -291,6 +296,116 @@ async function handleIndex(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * 处理 /auth 路由 - 用于跨域 JWT token 传递
+ * 当用户访问 gd.scalarize.org 或 discover.scalarize.org 时，如果未检测到登录状态，
+ * 可以访问本项目的 /auth?redirect=... 来校验是否已经登录
+ * 如果已登录，自动跳转到 redirect URL，并附带 JWT token
+ */
+async function handleAuth(request: Request, env: Env): Promise<Response> {
+	console.log('[Auth] 处理 /auth 请求');
+
+	const url = new URL(request.url);
+	const redirectParam = url.searchParams.get('redirect');
+
+	// 检查是否有 redirect 参数
+	if (!redirectParam) {
+		console.log('[Auth] 缺少 redirect 参数，返回错误');
+		return new Response('缺少 redirect 参数', { status: 400 });
+	}
+
+	// 验证 redirect URL 是否来自允许的域名
+	let redirectUrl: URL;
+	try {
+		redirectUrl = new URL(redirectParam);
+	} catch (error) {
+		console.log('[Auth] redirect 参数格式无效');
+		return new Response('redirect 参数格式无效', { status: 400 });
+	}
+
+	// 允许的域名列表
+	const allowedHostnames = [
+		'gd.scalarize.org',
+		'gd.scalarize.cn',
+		'discover.scalarize.org',
+		'discover.scalarize.cn',
+	];
+
+	const isAllowedHostname = allowedHostnames.some((hostname) => redirectUrl.hostname === hostname);
+
+	if (!isAllowedHostname) {
+		console.log(`[Auth] redirect URL 域名不允许: ${redirectUrl.hostname}`);
+		return new Response('redirect URL 域名不允许', { status: 403 });
+	}
+
+	// 检查用户是否已登录（通过 Cookie 会话，因为这是同源请求）
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		console.log('[Auth] 用户未登录，重定向到登录页面');
+		// 未登录，重定向到登录页面，登录后会自动跳转回来
+		const loginUrl = new URL('/api/auth/google', request.url);
+		loginUrl.searchParams.set('redirect', redirectParam);
+		return new Response(null, {
+			status: 302,
+			headers: { Location: loginUrl.toString() },
+		});
+	}
+
+	// 用户已登录，从数据库获取完整用户信息
+	console.log(`[Auth] 用户已登录: ${session.email}`);
+	const user = await getUserById(env.DB, session.userId);
+	if (!user) {
+		console.warn(`[Auth] 数据库中没有找到用户: ${session.userId}`);
+		// 清除无效会话，重定向到登录页面
+		const isProduction = request.url.startsWith('https://');
+		const loginUrl = new URL('/api/auth/google', request.url);
+		loginUrl.searchParams.set('redirect', redirectParam);
+		return new Response(null, {
+			status: 302,
+			headers: {
+				Location: loginUrl.toString(),
+				'Set-Cookie': clearSessionCookie(isProduction),
+			},
+		});
+	}
+
+	// 检查用户是否有对应模块的权限
+	const isAdmin = isAdminEmail(user.email);
+	let hasPermission = false;
+	let moduleId = '';
+
+	// 根据 redirect URL 的域名判断需要检查哪个模块的权限
+	if (redirectUrl.hostname.includes('gd.scalarize')) {
+		moduleId = 'gd';
+		hasPermission = await hasModulePermission(env.DB, user.id, 'gd', isAdmin);
+	} else if (redirectUrl.hostname.includes('discover.scalarize')) {
+		moduleId = 'discover';
+		hasPermission = await hasModulePermission(env.DB, user.id, 'discover', isAdmin);
+	}
+
+	if (!hasPermission) {
+		console.log(`[Auth] 用户 ${user.email} 没有 ${moduleId} 模块权限`);
+		// 没有权限，返回错误页面或重定向到首页
+		return new Response(`您没有访问 ${moduleId} 模块的权限，请联系管理员`, {
+			status: 403,
+			headers: { 'Content-Type': 'text/html; charset=utf-8' },
+		});
+	}
+
+	// 生成 JWT token
+	console.log(`[Auth] 为用户 ${user.email} 生成 JWT token`);
+	const jwtToken = await generateJWT(user.id, user.email, user.name, env);
+
+	// 将 JWT token 添加到 redirect URL 的参数中
+	redirectUrl.searchParams.set('token', jwtToken);
+
+	console.log(`[Auth] 重定向到 ${redirectUrl.toString()}`);
+	return new Response(null, {
+		status: 302,
+		headers: { Location: redirectUrl.toString() },
+	});
+}
+
+/**
  * 安全的 Base64 编码（支持 Unicode 字符）
  * 使用 TextEncoder 将字符串转换为 UTF-8 字节，然后进行 base64 编码
  */
@@ -355,8 +470,13 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 		// 验证 redirect URL 是否为同源或允许的域名（安全考虑）
 		try {
 			const redirectUrl = new URL(redirect, baseUrl);
-			// 只允许 scalarize.org 域名下的跳转
-			if (redirectUrl.hostname.endsWith('.scalarize.org') || redirectUrl.hostname === 'scalarize.org') {
+			// 允许 scalarize.org 和 scalarize.cn 域名下的跳转
+			const isAllowedDomain =
+				redirectUrl.hostname.endsWith('.scalarize.org') ||
+				redirectUrl.hostname === 'scalarize.org' ||
+				redirectUrl.hostname.endsWith('.scalarize.cn') ||
+				redirectUrl.hostname === 'scalarize.cn';
+			if (isAllowedDomain) {
 				const encodedRedirect = safeBase64Encode(redirect);
 				finalState = `${state}|${encodedRedirect}`;
 				console.log(`[OAuth] 将跳转目标编码到 state 参数中`);
@@ -587,7 +707,12 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 			try {
 				// 验证 redirect URL 是否为同源或允许的域名（安全考虑）
 				const redirectUrl = new URL(redirectFromState, new URL(request.url).origin);
-				if (redirectUrl.hostname.endsWith('.scalarize.org') || redirectUrl.hostname === 'scalarize.org') {
+				const isAllowedDomain =
+					redirectUrl.hostname.endsWith('.scalarize.org') ||
+					redirectUrl.hostname === 'scalarize.org' ||
+					redirectUrl.hostname.endsWith('.scalarize.cn') ||
+					redirectUrl.hostname === 'scalarize.cn';
+				if (isAllowedDomain) {
 					targetUrl = redirectFromState;
 					console.log(`[Callback] 使用 state 中的跳转目标: ${targetUrl}`);
 				} else {
@@ -716,12 +841,8 @@ function handleApiPing(request: Request, env: Env): Response {
 }
 
 /**
- * 获取请求的 host 信息
- * 判断是否为 cnHost（joel.scalarize.cn）
- * 支持反向代理：优先从 X-Forwarded-Host 或 X-Original-Host 获取真实 host
- */
-/**
  * API: 返回当前登录用户信息（给前端 Pages 使用）
+ * 注意：此接口只支持 Bearer JWT token 验证，不支持跨域 Cookie 会话验证
  */
 async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/me 请求');
@@ -734,7 +855,7 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	
 	// 添加详细日志用于调试
 	console.log(`[API] /api/me 请求头信息 - Origin: ${origin || 'null'}, Referer: ${referer || 'null'}, Request Hostname: ${requestHostname}`);
-	
+
 	// 检查是否为 gd 模块请求（通过 Origin、Referer 或请求 hostname）
 	const isGdRequest =
 		(origin && (origin.includes('gd.scalarize.org') || origin.includes('gd.scalarize.cn'))) ||
@@ -754,156 +875,128 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 		console.log('[API] /api/me 检测到来自 discover 项目的请求，需要验证 discover 模块权限');
 	}
 
-	// 优先尝试从 JWT token 获取用户信息
-	const jwtToken = getJWTFromRequest(request);
-	if (jwtToken) {
-		console.log('[API] /api/me 检测到 JWT token');
-		const payload = await verifyJWT(jwtToken, env, env.USER_SESSION);
-		if (payload) {
-			// 从数据库获取完整用户信息
-			const user = await getUserById(env.DB, payload.userId);
-			if (user) {
-				const isAdmin = isAdminEmail(user.email);
-				const mustChangePassword = user.password_must_change === 1;
-
-				// 如果请求来自 gd 项目，检查用户是否有 gd 模块权限
-				if (isGdRequest) {
-					const hasGdPermission = await hasModulePermission(env.DB, user.id, 'gd', isAdmin);
-					if (!hasGdPermission) {
-						console.log(`[API] /api/me 用户 ${user.email} 没有 gd 模块权限，视为未登录`);
-						return jsonWithCors(
-							request,
-							env,
-							{
-								authenticated: false,
-								user: null,
-							},
-							200
-						);
-					}
-					console.log(`[API] /api/me 用户 ${user.email} 有 gd 模块权限`);
-				}
-
-				// 如果请求来自 discover 项目，检查用户是否有 discover 模块权限
-				if (isDiscoverRequest) {
-					const hasDiscoverPermission = await hasModulePermission(env.DB, user.id, 'discover', isAdmin);
-					if (!hasDiscoverPermission) {
-						console.log(`[API] /api/me 用户 ${user.email} 没有 discover 模块权限，视为未登录`);
-						return jsonWithCors(
-							request,
-							env,
-							{
-								authenticated: false,
-								user: null,
-							},
-							200
-						);
-					}
-					console.log(`[API] /api/me 用户 ${user.email} 有 discover 模块权限`);
-				}
-
-				console.log(`[API] /api/me JWT 验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}, 需要修改密码: ${mustChangePassword}`);
-				return jsonWithCors(
-					request,
-					env,
-					{
-						authenticated: true,
-						user: {
-							id: user.id,
-							email: user.email,
-							name: user.name,
-							picture: user.picture ?? null,
-							isAdmin,
-							mustChangePassword,
-						},
-					},
-					200
-				);
-			} else {
-				console.warn(`[API] /api/me JWT token 有效但数据库未找到用户: ${payload.userId}`);
-			}
+	// 只支持 JWT token 验证（不支持跨域 Cookie）
+	// 对于跨域请求（gd/discover），只允许从 Authorization header 获取 token，不允许从 URL 参数获取
+	let jwtToken: string | null = null;
+	if (isGdRequest || isDiscoverRequest) {
+		// 跨域请求：只从 Authorization header 获取 token
+		const authHeader = request.headers.get('Authorization');
+		if (authHeader && authHeader.startsWith('Bearer ')) {
+			jwtToken = authHeader.substring(7);
+			console.log('[API] /api/me 从 Authorization header 获取 JWT token（跨域请求）');
 		} else {
-			console.log('[API] /api/me JWT token 验证失败');
-		}
-	}
-
-	// 回退到 Cookie 会话验证（兼容旧版本）
-	const session = getSessionFromRequest(request);
-	if (session) {
-		console.log('[API] /api/me 使用 Cookie 会话验证');
-		// 从数据库获取完整用户信息
-		const user = await getUserById(env.DB, session.userId);
-		if (user) {
-			const isAdmin = isAdminEmail(user.email);
-			const mustChangePassword = user.password_must_change === 1;
-
-			// 如果请求来自 gd 项目，检查用户是否有 gd 模块权限
-			if (isGdRequest) {
-				const hasGdPermission = await hasModulePermission(env.DB, user.id, 'gd', isAdmin);
-				if (!hasGdPermission) {
-					console.log(`[API] /api/me 用户 ${user.email} 没有 gd 模块权限，视为未登录`);
-					return jsonWithCors(
-						request,
-						env,
-						{
-							authenticated: false,
-							user: null,
-						},
-						200
-					);
-				}
-				console.log(`[API] /api/me 用户 ${user.email} 有 gd 模块权限`);
-			}
-
-			// 如果请求来自 discover 项目，检查用户是否有 discover 模块权限
-			if (isDiscoverRequest) {
-				const hasDiscoverPermission = await hasModulePermission(env.DB, user.id, 'discover', isAdmin);
-				if (!hasDiscoverPermission) {
-					console.log(`[API] /api/me 用户 ${user.email} 没有 discover 模块权限，视为未登录`);
-					return jsonWithCors(
-						request,
-						env,
-						{
-							authenticated: false,
-							user: null,
-						},
-						200
-					);
-				}
-				console.log(`[API] /api/me 用户 ${user.email} 有 discover 模块权限`);
-			}
-
-			console.log(
-				`[API] /api/me Cookie 会话验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}, 需要修改密码: ${mustChangePassword}`
-			);
+			console.log('[API] /api/me 跨域请求未找到 Authorization header，返回未登录状态');
 			return jsonWithCors(
 				request,
 				env,
 				{
-					authenticated: true,
-					user: {
-						id: user.id,
-						email: user.email,
-						name: user.name,
-						picture: user.picture ?? null,
-						isAdmin,
-						mustChangePassword,
-					},
+					authenticated: false,
+					user: null,
 				},
 				200
 			);
-		} else {
-			console.warn(`[API] /api/me Cookie 会话存在但数据库未找到用户: ${session.userId}`);
 		}
+	} else {
+		// 同源请求：可以从 Authorization header 或 URL 参数获取 token
+		jwtToken = getJWTFromRequest(request);
 	}
 
-	console.log('[API] /api/me 用户未登录');
+	if (!jwtToken) {
+		console.log('[API] /api/me 未找到 JWT token，返回未登录状态');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				authenticated: false,
+				user: null,
+			},
+			200
+		);
+	}
+
+	console.log('[API] /api/me 检测到 JWT token，开始验证');
+	const payload = await verifyJWT(jwtToken, env, env.USER_SESSION);
+	if (!payload) {
+		console.log('[API] /api/me JWT token 验证失败，返回未登录状态');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				authenticated: false,
+				user: null,
+			},
+			200
+		);
+	}
+
+	// 从数据库获取完整用户信息
+	const user = await getUserById(env.DB, payload.userId);
+	if (!user) {
+		console.warn(`[API] /api/me JWT token 有效但数据库未找到用户: ${payload.userId}`);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				authenticated: false,
+				user: null,
+			},
+			200
+		);
+	}
+
+	const isAdmin = isAdminEmail(user.email);
+	const mustChangePassword = user.password_must_change === 1;
+
+	// 如果请求来自 gd 项目，检查用户是否有 gd 模块权限
+	if (isGdRequest) {
+		const hasGdPermission = await hasModulePermission(env.DB, user.id, 'gd', isAdmin);
+		if (!hasGdPermission) {
+			console.log(`[API] /api/me 用户 ${user.email} 没有 gd 模块权限，视为未登录`);
+			return jsonWithCors(
+				request,
+				env,
+				{
+					authenticated: false,
+					user: null,
+				},
+				200
+			);
+		}
+		console.log(`[API] /api/me 用户 ${user.email} 有 gd 模块权限`);
+	}
+
+	// 如果请求来自 discover 项目，检查用户是否有 discover 模块权限
+	if (isDiscoverRequest) {
+		const hasDiscoverPermission = await hasModulePermission(env.DB, user.id, 'discover', isAdmin);
+		if (!hasDiscoverPermission) {
+			console.log(`[API] /api/me 用户 ${user.email} 没有 discover 模块权限，视为未登录`);
+			return jsonWithCors(
+				request,
+				env,
+				{
+					authenticated: false,
+					user: null,
+				},
+				200
+			);
+		}
+		console.log(`[API] /api/me 用户 ${user.email} 有 discover 模块权限`);
+	}
+
+	console.log(`[API] /api/me JWT 验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}, 需要修改密码: ${mustChangePassword}`);
 	return jsonWithCors(
 		request,
 		env,
 		{
-			authenticated: false,
-			user: null,
+			authenticated: true,
+			user: {
+				id: user.id,
+				email: user.email,
+				name: user.name,
+				picture: user.picture ?? null,
+				isAdmin,
+				mustChangePassword,
+			},
 		},
 		200
 	);
