@@ -729,12 +729,23 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	// 检查请求来源，判断是否需要验证 gd 或 discover 模块权限
 	const origin = request.headers.get('Origin');
 	const referer = request.headers.get('Referer');
+	const requestUrl = new URL(request.url);
+	const requestHostname = requestUrl.hostname;
+	
+	// 添加详细日志用于调试
+	console.log(`[API] /api/me 请求头信息 - Origin: ${origin || 'null'}, Referer: ${referer || 'null'}, Request Hostname: ${requestHostname}`);
+	
+	// 检查是否为 gd 模块请求（通过 Origin、Referer 或请求 hostname）
 	const isGdRequest =
 		(origin && (origin.includes('gd.scalarize.org') || origin.includes('gd.scalarize.cn'))) ||
-		(referer && (referer.includes('gd.scalarize.org') || referer.includes('gd.scalarize.cn')));
+		(referer && (referer.includes('gd.scalarize.org') || referer.includes('gd.scalarize.cn'))) ||
+		(requestHostname && (requestHostname.includes('gd.scalarize.org') || requestHostname.includes('gd.scalarize.cn')));
+	
+	// 检查是否为 discover 模块请求（通过 Origin、Referer 或请求 hostname）
 	const isDiscoverRequest =
 		(origin && (origin.includes('discover.scalarize.org') || origin.includes('discover.scalarize.cn'))) ||
-		(referer && (referer.includes('discover.scalarize.org') || referer.includes('discover.scalarize.cn')));
+		(referer && (referer.includes('discover.scalarize.org') || referer.includes('discover.scalarize.cn'))) ||
+		(requestHostname && (requestHostname.includes('discover.scalarize.org') || requestHostname.includes('discover.scalarize.cn')));
 
 	if (isGdRequest) {
 		console.log('[API] /api/me 检测到来自 gd 项目的请求，需要验证 gd 模块权限');
