@@ -753,6 +753,7 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 
 /**
  * 处理登出
+ * 返回 JSON 响应而不是重定向
  */
 async function handleLogout(request: Request, env: Env): Promise<Response> {
 	console.log(`[登出] 处理登出请求`);
@@ -800,39 +801,20 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 		console.log(`[登出] 未找到用户信息，跳过更新最后登出时间`);
 	}
 
-	// 获取重定向目标（清除 URL 中的 token 参数）
-	const url = new URL(request.url);
-	const redirectParam = url.searchParams.get('redirect');
-	let targetUrl = '/';
-
-	if (redirectParam) {
-		try {
-			const redirectUrl = new URL(redirectParam, new URL(request.url).origin);
-			// 只允许 scalarize.org 域名下的跳转
-			if (redirectUrl.hostname.endsWith('.scalarize.org') || redirectUrl.hostname === 'scalarize.org') {
-				// 清除 redirect URL 中的 token 参数
-				redirectUrl.searchParams.delete('token');
-				targetUrl = redirectUrl.pathname + redirectUrl.search;
-				console.log(`[登出] 重定向到指定页面: ${targetUrl}`);
-			}
-		} catch (error) {
-			console.warn(`[登出] 重定向 URL 格式无效: ${redirectParam}`);
-		}
-	}
-
-	// 在重定向 URL 中添加 logout=1 参数，让前端知道这是退出后的重定向
-	const redirectUrl = new URL(targetUrl, new URL(request.url).origin);
-	redirectUrl.searchParams.set('logout', '1');
-	const finalTargetUrl = redirectUrl.pathname + redirectUrl.search;
-
-	console.log(`[登出] 清除会话，重定向到: ${finalTargetUrl}`);
-	return new Response(null, {
-		status: 302,
-		headers: {
-			Location: finalTargetUrl,
-			'Set-Cookie': clearCookie,
+	console.log(`[登出] 清除会话，返回 JSON 响应`);
+	// 返回 JSON 响应，包含清除 Cookie 的 Set-Cookie 头
+	return jsonWithCors(
+		request,
+		env,
+		{
+			success: true,
+			message: '登出成功',
 		},
-	});
+		200,
+		{
+			'Set-Cookie': clearCookie,
+		}
+	);
 }
 
 /**

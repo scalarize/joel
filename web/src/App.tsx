@@ -43,7 +43,7 @@ function App() {
 	const [user, setUser] = useState<User | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [modulePermissions, setModulePermissions] = useState<Record<string, boolean> | null>(null);
-	
+
 	// 简化 host 判断，直接使用 window.location.hostname
 	const isCnHost = window.location.hostname === 'joel.scalarize.cn';
 
@@ -82,7 +82,7 @@ function App() {
 		if (user && !loading) {
 			const url = new URL(window.location.href);
 			const redirectParam = url.searchParams.get('redirect');
-			
+
 			// 如果用户已登录且有 redirect 参数，跳转到 SSO 处理
 			if (redirectParam && window.location.pathname !== '/sso') {
 				console.log('[前端] 检测到 redirect 参数，跳转到 SSO 处理');
@@ -93,7 +93,7 @@ function App() {
 		}
 	}, [user, loading]);
 
-		const loadModulePermissions = async () => {
+	const loadModulePermissions = async () => {
 		try {
 			const response = await fetch(getApiUrl('/api/profile/modules'), {
 				credentials: 'include',
@@ -162,19 +162,54 @@ function App() {
 	};
 
 	const handleLogin = () => {
-		console.log('[前端] 跳转到 Google 登录');
-		window.location.href = getApiUrl('/api/auth/google');
+		window.location.href = '/';
 	};
 
-	const handleLogout = () => {
+	const handleLogout = async () => {
 		console.log('[前端] 开始登出流程');
-		// 立即清除用户状态和 token
-		setUser(null);
-		localStorage.removeItem('jwt_token');
-		console.log('[前端] 已清除本地状态，跳转到退出接口');
-		// 直接跳转到退出接口，让后端处理 Cookie 清除和重定向
-		// 后端会在重定向 URL 中添加 logout=1 参数
-		window.location.href = getApiUrl('/api/logout');
+
+		try {
+			// 获取 JWT token（如果有）
+			const token = localStorage.getItem('jwt_token');
+			const headers: HeadersInit = {
+				'Content-Type': 'application/json',
+			};
+			if (token) {
+				headers['Authorization'] = `Bearer ${token}`;
+			}
+
+			// 异步调用登出 API
+			const response = await fetch(getApiUrl('/api/logout'), {
+				method: 'GET',
+				headers,
+				credentials: 'include',
+			});
+
+			console.log('[前端] 登出 API 响应状态:', response.status);
+
+			// 解析 JSON 响应
+			if (response.ok) {
+				const data = await response.json();
+				console.log('[前端] 登出成功:', data.message);
+			} else {
+				console.warn('[前端] 登出 API 返回非成功状态:', response.status);
+			}
+
+			// 清除本地状态
+			setUser(null);
+			localStorage.removeItem('jwt_token');
+			console.log('[前端] 已清除本地状态');
+
+			// 跳转到首页
+			console.log('[前端] 跳转到首页');
+			window.location.href = '/';
+		} catch (error) {
+			console.error('[前端] 登出失败:', error);
+			// 即使 API 调用失败，也清除本地状态并跳转
+			setUser(null);
+			localStorage.removeItem('jwt_token');
+			window.location.href = '/';
+		}
 	};
 
 	if (loading) {
@@ -263,9 +298,7 @@ function Header({ user, onLogin, onLogout }: { user: User | null; onLogin: () =>
 								{user.picture ? (
 									<img src={user.picture} alt={user.name} className="user-avatar" />
 								) : (
-									<div className="user-avatar-placeholder">
-										{user.name.charAt(0).toUpperCase()}
-									</div>
+									<div className="user-avatar-placeholder">{user.name.charAt(0).toUpperCase()}</div>
 								)}
 								<div className="user-details">
 									<span className="user-name">{user.name}</span>
@@ -457,12 +490,12 @@ function replaceDomainInUrl(url: string, isCnHost: boolean): string {
 	return url;
 }
 
-function Dashboard({ 
-	user, 
-	isCnHost, 
-	modulePermissions 
-}: { 
-	user: User | null; 
+function Dashboard({
+	user,
+	isCnHost,
+	modulePermissions,
+}: {
+	user: User | null;
 	isCnHost: boolean;
 	modulePermissions: Record<string, boolean> | null;
 }) {
@@ -518,22 +551,22 @@ function Dashboard({
 		if (user?.isAdmin === true) {
 			return true;
 		}
-		
+
 		// profile 模块所有人可访问
 		if (module.id === 'profile') {
 			return true;
 		}
-		
+
 		// admin 模块只有管理员可访问
 		if (module.id === 'admin') {
 			return false; // 非管理员不能访问
 		}
-		
+
 		// favor、gd 和 discover 需要检查授权
 		if (modulePermissions && modulePermissions[module.id] === true) {
 			return true;
 		}
-		
+
 		return false;
 	});
 
