@@ -726,6 +726,17 @@ function handleApiPing(request: Request, env: Env): Response {
 async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/me 请求');
 
+	// 检查请求来源，判断是否需要验证 gd 模块权限
+	const origin = request.headers.get('Origin');
+	const referer = request.headers.get('Referer');
+	const isGdRequest =
+		(origin && (origin.includes('gd.scalarize.org') || origin.includes('gd.scalarize.cn'))) ||
+		(referer && (referer.includes('gd.scalarize.org') || referer.includes('gd.scalarize.cn')));
+
+	if (isGdRequest) {
+		console.log('[API] /api/me 检测到来自 gd 项目的请求，需要验证 gd 模块权限');
+	}
+
 	// 优先尝试从 JWT token 获取用户信息
 	const jwtToken = getJWTFromRequest(request);
 	if (jwtToken) {
@@ -737,6 +748,25 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 			if (user) {
 				const isAdmin = isAdminEmail(user.email);
 				const mustChangePassword = user.password_must_change === 1;
+
+				// 如果请求来自 gd 项目，检查用户是否有 gd 模块权限
+				if (isGdRequest) {
+					const hasGdPermission = await hasModulePermission(env.DB, user.id, 'gd', isAdmin);
+					if (!hasGdPermission) {
+						console.log(`[API] /api/me 用户 ${user.email} 没有 gd 模块权限，视为未登录`);
+						return jsonWithCors(
+							request,
+							env,
+							{
+								authenticated: false,
+								user: null,
+							},
+							200
+						);
+					}
+					console.log(`[API] /api/me 用户 ${user.email} 有 gd 模块权限`);
+				}
+
 				console.log(`[API] /api/me JWT 验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}, 需要修改密码: ${mustChangePassword}`);
 				return jsonWithCors(
 					request,
@@ -771,6 +801,25 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 		if (user) {
 			const isAdmin = isAdminEmail(user.email);
 			const mustChangePassword = user.password_must_change === 1;
+
+			// 如果请求来自 gd 项目，检查用户是否有 gd 模块权限
+			if (isGdRequest) {
+				const hasGdPermission = await hasModulePermission(env.DB, user.id, 'gd', isAdmin);
+				if (!hasGdPermission) {
+					console.log(`[API] /api/me 用户 ${user.email} 没有 gd 模块权限，视为未登录`);
+					return jsonWithCors(
+						request,
+						env,
+						{
+							authenticated: false,
+							user: null,
+						},
+						200
+					);
+				}
+				console.log(`[API] /api/me 用户 ${user.email} 有 gd 模块权限`);
+			}
+
 			console.log(
 				`[API] /api/me Cookie 会话验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}, 需要修改密码: ${mustChangePassword}`
 			);
