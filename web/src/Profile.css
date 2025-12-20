@@ -67,12 +67,30 @@
 	flex-shrink: 0;
 }
 
+.avatar-preview {
+	position: relative;
+}
+
 .avatar-preview img {
 	width: 120px;
 	height: 120px;
 	border-radius: 50%;
 	border: 3px solid #667eea;
 	object-fit: cover;
+}
+
+.avatar-preview-placeholder {
+	width: 120px;
+	height: 120px;
+	border-radius: 50%;
+	border: 3px solid #667eea;
+	background-color: #667eea;
+	color: white;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 600;
+	font-size: 3rem;
 }
 
 .info-text {

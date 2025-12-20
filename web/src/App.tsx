@@ -17,16 +17,12 @@ interface ApiResponse {
 	user: User | null;
 }
 
-interface HostInfo {
-	host: string;
-	isCnHost: boolean;
-	domainSuffix: string;
-}
-
 function App() {
 	const [user, setUser] = useState<User | null>(null);
 	const [loading, setLoading] = useState(true);
-	const [hostInfo, setHostInfo] = useState<HostInfo | null>(null);
+	
+	// 简化 host 判断，直接使用 window.location.hostname
+	const isCnHost = window.location.hostname === 'joel.scalarize.cn';
 
 	useEffect(() => {
 		const url = new URL(window.location.href);
@@ -55,42 +51,6 @@ function App() {
 			window.history.replaceState({}, '', url.toString());
 		}
 
-		// 获取 host 信息
-		// 注意：前端无法直接获取反向代理的真实 host，必须通过后端 API
-		const loadHostInfo = async () => {
-			try {
-				const response = await fetch('/api/host-info', {
-					credentials: 'include',
-				});
-				if (response.ok) {
-					const data: HostInfo = await response.json();
-					setHostInfo(data);
-					console.log('[前端] Host 信息:', data);
-				} else {
-					console.warn('[前端] 获取 host 信息失败，使用默认值');
-					// 如果 API 失败，从 window.location 推断（可能不准确，因为反向代理）
-					const host = window.location.hostname;
-					const isCnHost = host === 'joel.scalarize.cn';
-					setHostInfo({
-						host,
-						isCnHost,
-						domainSuffix: isCnHost ? 'scalarize.cn' : 'scalarize.org',
-					});
-				}
-			} catch (error) {
-				console.error('[前端] 获取 host 信息失败:', error);
-				// 失败时从 window.location 推断（可能不准确，因为反向代理）
-				const host = window.location.hostname;
-				const isCnHost = host === 'joel.scalarize.cn';
-				setHostInfo({
-					host,
-					isCnHost,
-					domainSuffix: isCnHost ? 'scalarize.cn' : 'scalarize.org',
-				});
-			}
-		};
-
-		loadHostInfo();
 		checkAuth();
 	}, []);
 
@@ -192,13 +152,13 @@ function App() {
 					user ? (
 						<Profile />
 					) : (
-						<LoginPrompt onLogin={handleLogin} />
+						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
 				) : path === '/admin' || path === '/admin/dashboard' || path === '/admin/users' ? (
 					user ? (
 						<Admin />
 					) : (
-						<LoginPrompt onLogin={handleLogin} />
+						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
 				) : path === '/change-password' ? (
 					user ? (
@@ -209,12 +169,12 @@ function App() {
 							}}
 						/>
 					) : (
-						<LoginPrompt onLogin={handleLogin} />
+						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
 				) : user ? (
-					<Dashboard user={user} hostInfo={hostInfo} />
+					<Dashboard user={user} isCnHost={isCnHost} />
 				) : (
-					<LoginPrompt onLogin={handleLogin} />
+					<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 				)}
 			</main>
 		</div>
@@ -233,7 +193,13 @@ function Header({ user, onLogin, onLogout }: { user: User | null; onLogin: () =>
 					{user ? (
 						<div className="user-info">
 							<a href="/profile" className="user-link">
-								{user.picture && <img src={user.picture} alt={user.name} className="user-avatar" />}
+								{user.picture ? (
+									<img src={user.picture} alt={user.name} className="user-avatar" />
+								) : (
+									<div className="user-avatar-placeholder">
+										{user.name.charAt(0).toUpperCase()}
+									</div>
+								)}
 								<div className="user-details">
 									<span className="user-name">{user.name}</span>
 									<span className="user-email">{user.email}</span>
@@ -254,8 +220,9 @@ function Header({ user, onLogin, onLogout }: { user: User | null; onLogin: () =>
 	);
 }
 
-function LoginPrompt({ onLogin }: { onLogin: () => void }) {
-	const [loginMethod, setLoginMethod] = useState<'google' | 'password'>('google');
+function LoginPrompt({ onLogin, isCnHost }: { onLogin: () => void; isCnHost: boolean }) {
+	// cnHost 只显示密码登录，不显示 Google OAuth
+	const [loginMethod, setLoginMethod] = useState<'google' | 'password'>(isCnHost ? 'password' : 'google');
 	const [email, setEmail] = useState('');
 	const [password, setPassword] = useState('');
 	const [error, setError] = useState<string | null>(null);
@@ -310,26 +277,28 @@ function LoginPrompt({ onLogin }: { onLogin: () => void }) {
 		<div className="login-prompt">
 			<div className="login-card">
 				<h2>欢迎使用 Joel 工作台</h2>
-				<div className="login-method-tabs">
-					<button
-						className={loginMethod === 'google' ? 'active' : ''}
-						onClick={() => {
-							setLoginMethod('google');
-							setError(null);
-						}}
-					>
-						Google 登录
-					</button>
-					<button
-						className={loginMethod === 'password' ? 'active' : ''}
-						onClick={() => {
-							setLoginMethod('password');
-							setError(null);
-						}}
-					>
-						密码登录
-					</button>
-				</div>
+				{!isCnHost && (
+					<div className="login-method-tabs">
+						<button
+							className={loginMethod === 'google' ? 'active' : ''}
+							onClick={() => {
+								setLoginMethod('google');
+								setError(null);
+							}}
+						>
+							Google 登录
+						</button>
+						<button
+							className={loginMethod === 'password' ? 'active' : ''}
+							onClick={() => {
+								setLoginMethod('password');
+								setError(null);
+							}}
+						>
+							密码登录
+						</button>
+					</div>
+				)}
 
 				{loginMethod === 'google' ? (
 					<>
@@ -408,8 +377,8 @@ function LoginPrompt({ onLogin }: { onLogin: () => void }) {
  * 根据 host 信息替换链接中的域名
  * 如果链接包含 .scalarize.org，根据 isCnHost 替换为 .scalarize.cn
  */
-function replaceDomainInUrl(url: string, hostInfo: HostInfo | null): string {
-	if (!hostInfo || !hostInfo.isCnHost) {
+function replaceDomainInUrl(url: string, isCnHost: boolean): string {
+	if (!isCnHost) {
 		return url;
 	}
 
@@ -421,7 +390,7 @@ function replaceDomainInUrl(url: string, hostInfo: HostInfo | null): string {
 	return url;
 }
 
-function Dashboard({ user, hostInfo }: { user: User | null; hostInfo: HostInfo | null }) {
+function Dashboard({ user, isCnHost }: { user: User | null; isCnHost: boolean }) {
 	const modules = [
 		{
 			id: 'profile',
@@ -459,7 +428,7 @@ function Dashboard({ user, hostInfo }: { user: User | null; hostInfo: HostInfo |
 		},
 	].map((module) => ({
 		...module,
-		url: replaceDomainInUrl(module.url, hostInfo),
+		url: replaceDomainInUrl(module.url, isCnHost),
 	}));
 
 	// 如果不是管理员，过滤掉需要管理员权限的模块

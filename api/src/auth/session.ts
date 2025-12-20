@@ -21,13 +21,44 @@ function generateSessionId(): string {
 }
 
 /**
+ * 安全的 Base64 编码（支持 Unicode 字符）
+ * 使用 TextEncoder 将字符串转换为 UTF-8 字节，然后进行 base64 编码
+ */
+function safeBase64Encode(str: string): string {
+	const encoder = new TextEncoder();
+	const bytes = encoder.encode(str);
+	// 将字节数组转换为字符串，然后使用 btoa
+	// 使用循环避免展开运算符的参数数量限制
+	let binaryString = '';
+	for (let i = 0; i < bytes.length; i++) {
+		binaryString += String.fromCharCode(bytes[i]);
+	}
+	return btoa(binaryString);
+}
+
+/**
+ * 安全的 Base64 解码（支持 Unicode 字符）
+ * 先使用 atob 解码，然后使用 TextDecoder 将 UTF-8 字节转换为字符串
+ */
+function safeBase64Decode(base64: string): string {
+	const binaryString = atob(base64);
+	const bytes = new Uint8Array(binaryString.length);
+	for (let i = 0; i < binaryString.length; i++) {
+		bytes[i] = binaryString.charCodeAt(i);
+	}
+	const decoder = new TextDecoder();
+	return decoder.decode(bytes);
+}
+
+/**
  * 设置会话 Cookie
  */
 export function setSessionCookie(sessionData: SessionData, isProduction: boolean = false): string {
 	const sessionId = generateSessionId();
 	// 在实际应用中，应该将 sessionData 存储到 KV 或 D1，这里简化处理
-	// 使用 base64 编码存储（注意：这不是最安全的方式，生产环境建议使用 KV）
-	const sessionValue = btoa(JSON.stringify({ id: sessionId, ...sessionData }));
+	// 使用安全的 base64 编码存储（支持 Unicode 字符，如中文用户名）
+	const jsonString = JSON.stringify({ id: sessionId, ...sessionData });
+	const sessionValue = safeBase64Encode(jsonString);
 
 	const cookie = `${SESSION_COOKIE_NAME}=${sessionValue}; Path=/; Max-Age=${SESSION_MAX_AGE}; HttpOnly; SameSite=Lax${
 		isProduction ? '; Secure' : ''
@@ -60,7 +91,9 @@ export function getSessionFromRequest(request: Request): SessionData | null {
 	}
 
 	try {
-		const sessionData = JSON.parse(atob(sessionValue)) as SessionData & {
+		// 使用安全的 base64 解码（支持 Unicode 字符）
+		const jsonString = safeBase64Decode(sessionValue);
+		const sessionData = JSON.parse(jsonString) as SessionData & {
 			id: string;
 		};
 		console.log(`[会话] 获取会话成功，用户: ${sessionData.email}`);

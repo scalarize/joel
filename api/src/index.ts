@@ -88,10 +88,6 @@ export default {
 					return handleApiPing(request, env);
 				}
 
-				if (path === '/api/host-info' && request.method === 'GET') {
-					return handleApiHostInfo(request, env);
-				}
-
 				if (path === '/api/me' && request.method === 'GET') {
 					return handleApiMe(request, env);
 				}
@@ -270,6 +266,36 @@ async function handleIndex(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * 安全的 Base64 编码（支持 Unicode 字符）
+ * 使用 TextEncoder 将字符串转换为 UTF-8 字节，然后进行 base64 编码
+ */
+function safeBase64Encode(str: string): string {
+	const encoder = new TextEncoder();
+	const bytes = encoder.encode(str);
+	// 将字节数组转换为字符串，然后使用 btoa
+	// 使用循环避免展开运算符的参数数量限制
+	let binaryString = '';
+	for (let i = 0; i < bytes.length; i++) {
+		binaryString += String.fromCharCode(bytes[i]);
+	}
+	return btoa(binaryString);
+}
+
+/**
+ * 安全的 Base64 解码（支持 Unicode 字符）
+ * 先使用 atob 解码，然后使用 TextDecoder 将 UTF-8 字节转换为字符串
+ */
+function safeBase64Decode(base64: string): string {
+	const binaryString = atob(base64);
+	const bytes = new Uint8Array(binaryString.length);
+	for (let i = 0; i < binaryString.length; i++) {
+		bytes[i] = binaryString.charCodeAt(i);
+	}
+	const decoder = new TextDecoder();
+	return decoder.decode(bytes);
+}
+
+/**
  * 处理 Google OAuth 授权入口
  */
 async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
@@ -306,7 +332,7 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 			const redirectUrl = new URL(redirect, baseUrl);
 			// 只允许 scalarize.org 域名下的跳转
 			if (redirectUrl.hostname.endsWith('.scalarize.org') || redirectUrl.hostname === 'scalarize.org') {
-				const encodedRedirect = btoa(redirect);
+				const encodedRedirect = safeBase64Encode(redirect);
 				finalState = `${state}|${encodedRedirect}`;
 				console.log(`[OAuth] 将跳转目标编码到 state 参数中`);
 			} else {
@@ -376,7 +402,7 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 	let redirectFromState: string | null = null;
 	if (stateParts.length > 1) {
 		try {
-			redirectFromState = atob(stateParts[1]);
+			redirectFromState = safeBase64Decode(stateParts[1]);
 			console.log(`[Callback] 从 state 参数中提取到 redirect URL: ${redirectFromState}`);
 		} catch (error) {
 			console.warn(`[Callback] 解析 state 中的 redirect URL 失败:`, error);
@@ -669,44 +695,6 @@ function handleApiPing(request: Request, env: Env): Response {
  * 判断是否为 cnHost（joel.scalarize.cn）
  * 支持反向代理：优先从 X-Forwarded-Host 或 X-Original-Host 获取真实 host
  */
-function getHostInfo(request: Request): { host: string; isCnHost: boolean; domainSuffix: string } {
-	// 优先从反向代理的请求头获取真实 host
-	// X-Forwarded-Host 是常见的反向代理头部
-	// X-Original-Host 是 Cloudflare 等使用的头部
-	const forwardedHost = request.headers.get('X-Forwarded-Host') || request.headers.get('X-Original-Host') || request.headers.get('Host');
-
-	let host: string;
-	if (forwardedHost) {
-		// X-Forwarded-Host 可能包含端口，需要提取 hostname
-		host = forwardedHost.split(':')[0];
-	} else {
-		// 回退到从 URL 获取
-		const url = new URL(request.url);
-		host = url.hostname;
-	}
-
-	const isCnHost = host === 'joel.scalarize.cn';
-	const domainSuffix = isCnHost ? 'scalarize.cn' : 'scalarize.org';
-
-	console.log(`[Host] 检测到 host: ${host}, isCnHost: ${isCnHost}, domainSuffix: ${domainSuffix}`);
-	console.log(
-		`[Host] X-Forwarded-Host: ${request.headers.get('X-Forwarded-Host')}, X-Original-Host: ${request.headers.get(
-			'X-Original-Host'
-		)}, Host: ${request.headers.get('Host')}`
-	);
-
-	return { host, isCnHost, domainSuffix };
-}
-
-/**
- * API: 返回 host 信息（给前端使用）
- */
-function handleApiHostInfo(request: Request, env: Env): Response {
-	console.log('[API] /api/host-info 请求');
-	const hostInfo = getHostInfo(request);
-	return jsonWithCors(request, env, hostInfo, 200);
-}
-
 /**
  * API: 返回当前登录用户信息（给前端 Pages 使用）
  */
@@ -866,7 +854,7 @@ async function handleApiUpdateProfile(request: Request, env: Env): Promise<Respo
 		const body = await request.json();
 		const { name, picture } = body as {
 			name?: string;
-			picture?: string;
+			picture?: string | null;
 		};
 
 		// 验证输入
@@ -882,13 +870,14 @@ async function handleApiUpdateProfile(request: Request, env: Env): Promise<Respo
 			);
 		}
 
-		if (picture !== undefined && typeof picture !== 'string') {
+		// 允许 picture 为 null 或空字符串（用于删除头像）
+		if (picture !== undefined && picture !== null && picture !== '' && typeof picture !== 'string') {
 			return jsonWithCors(
 				request,
 				env,
 				{
 					error: 'Bad Request',
-					message: 'picture 必须是字符串',
+					message: 'picture 必须是字符串、null 或空字符串',
 				},
 				400
 			);

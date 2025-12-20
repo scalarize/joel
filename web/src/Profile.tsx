@@ -139,14 +139,30 @@ export default function Profile() {
 					<h2>当前显示信息</h2>
 					<div className="current-info">
 						<div className="avatar-preview">
-							<img
-								src={profile.picture || 'https://via.placeholder.com/150?text=No+Avatar'}
-								alt={profile.name}
-								onError={(e) => {
-									(e.target as HTMLImageElement).src =
-										'https://via.placeholder.com/150?text=Invalid+Image';
-								}}
-							/>
+							{profile.picture ? (
+								<>
+									<img
+										src={profile.picture}
+										alt={profile.name}
+										onError={(e) => {
+											// 如果图片加载失败，隐藏图片并显示 placeholder
+											const target = e.target as HTMLImageElement;
+											target.style.display = 'none';
+											const placeholder = target.nextElementSibling as HTMLElement;
+											if (placeholder) {
+												placeholder.style.display = 'flex';
+											}
+										}}
+									/>
+									<div className="avatar-preview-placeholder" style={{ display: 'none' }}>
+										{profile.name.charAt(0).toUpperCase()}
+									</div>
+								</>
+							) : (
+								<div className="avatar-preview-placeholder">
+									{profile.name.charAt(0).toUpperCase()}
+								</div>
+							)}
 						</div>
 						<div className="info-text">
 							<p className="info-label">显示名称</p>

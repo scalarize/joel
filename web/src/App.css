@@ -91,6 +91,22 @@ body {
 	height: 36px;
 	border-radius: 50%;
 	border: 2px solid #e0e0e0;
+	object-fit: cover;
+}
+
+.user-avatar-placeholder {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	background-color: #667eea;
+	color: white;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 500;
+	font-size: 1rem;
+	border: 2px solid #e0e0e0;
+	flex-shrink: 0;
 }
 
 .user-details {
