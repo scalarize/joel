@@ -601,6 +601,26 @@ function Dashboard({
 		return false;
 	});
 
+	// 为 gd 和 discover 模块自动添加 token
+	const getModuleUrl = (module: (typeof visibleModules)[0]): string => {
+		// 只对外部模块（gd 和 discover）添加 token
+		if (module.id === 'gd' || module.id === 'discover') {
+			const token = localStorage.getItem('jwt_token');
+			if (token) {
+				try {
+					const url = new URL(module.url);
+					url.searchParams.set('token', token);
+					return url.toString();
+				} catch (error) {
+					// 如果 URL 解析失败，返回原始 URL
+					console.warn(`[Dashboard] 无法解析模块 URL: ${module.url}`, error);
+					return module.url;
+				}
+			}
+		}
+		return module.url;
+	};
+
 	return (
 		<div className="dashboard">
 			<h2 className="dashboard-title">功能工作台</h2>
@@ -608,7 +628,7 @@ function Dashboard({
 				{visibleModules.map((module) => (
 					<a
 						key={module.id}
-						href={module.url}
+						href={getModuleUrl(module)}
 						className="module-card"
 						target={module.external ? '_blank' : undefined}
 						rel={module.external ? 'noopener noreferrer' : undefined}
