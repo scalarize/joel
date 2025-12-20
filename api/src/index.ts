@@ -326,12 +326,7 @@ async function handleAuth(request: Request, env: Env): Promise<Response> {
 	}
 
 	// 允许的域名列表
-	const allowedHostnames = [
-		'gd.scalarize.org',
-		'gd.scalarize.cn',
-		'discover.scalarize.org',
-		'discover.scalarize.cn',
-	];
+	const allowedHostnames = ['gd.scalarize.org', 'gd.scalarize.cn', 'discover.scalarize.org', 'discover.scalarize.cn'];
 
 	const isAllowedHostname = allowedHostnames.some((hostname) => redirectUrl.hostname === hostname);
 
@@ -459,9 +454,12 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 	const state = generateState();
 	console.log(`[OAuth] 生成 state: ${state.substring(0, 8)}...`);
 
-	// 构建回调 URL
+	// 构建回调 URL - 使用前端路径，前端会调用 API 处理
 	const baseUrl = env.BASE_URL || new URL(request.url).origin;
-	const redirectUri = `${baseUrl}/api/auth/google/callback`;
+	// 获取前端 URL（如果是 API 域名，需要转换为前端域名）
+	const frontendUrl = env.FRONTEND_URL || baseUrl.replace('api.', '').replace('api-', '');
+	const redirectUri = `${frontendUrl}/auth/google/callback`;
+	console.log(`[OAuth] 回调 URL: ${redirectUri}`);
 
 	// 生成授权 URL
 	const authUrl = generateGoogleAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, state);
@@ -498,15 +496,20 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 	const isProduction = request.url.startsWith('https://');
 	const stateCookie = `oauth_state=${state}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
 
-	const headers = new Headers();
-	headers.set('Location', finalAuthUrl);
-	headers.append('Set-Cookie', stateCookie);
-
-	console.log(`[OAuth] 重定向到 Google 授权页面`);
-	return new Response(null, {
-		status: 302,
-		headers,
-	});
+	console.log(`[OAuth] 生成授权 URL，返回 JSON 响应`);
+	// 返回 JSON 响应，包含授权 URL 和 state cookie
+	return jsonWithCors(
+		request,
+		env,
+		{
+			authUrl: finalAuthUrl,
+			message: '请重定向到授权 URL',
+		},
+		200,
+		{
+			'Set-Cookie': stateCookie,
+		}
+	);
 }
 
 /**
@@ -571,9 +574,12 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		return new Response('Google OAuth 未配置', { status: 500 });
 	}
 
-	// 构建回调 URL
+	// 构建回调 URL - 使用前端路径（与授权时一致）
 	const baseUrl = env.BASE_URL || new URL(request.url).origin;
-	const redirectUri = `${baseUrl}/api/auth/google/callback`;
+	// 获取前端 URL（如果是 API 域名，需要转换为前端域名）
+	const frontendUrl = env.FRONTEND_URL || baseUrl.replace('api.', '').replace('api-', '');
+	const redirectUri = `${frontendUrl}/auth/google/callback`;
+	console.log(`[Callback] 回调 URL: ${redirectUri}`);
 
 	try {
 		// 交换授权码获取访问令牌
@@ -839,9 +845,11 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	const referer = request.headers.get('Referer');
 	const requestUrl = new URL(request.url);
 	const requestHostname = requestUrl.hostname;
-	
+
 	// 添加详细日志用于调试
-	console.log(`[API] /api/me 请求头信息 - Origin: ${origin || 'null'}, Referer: ${referer || 'null'}, Request Hostname: ${requestHostname}`);
+	console.log(
+		`[API] /api/me 请求头信息 - Origin: ${origin || 'null'}, Referer: ${referer || 'null'}, Request Hostname: ${requestHostname}`
+	);
 	console.log(`[API] /api/me Authorization header: ${request.headers.get('Authorization') || 'null'}`);
 
 	// 检查是否为 gd 模块请求（通过 Origin、Referer 或请求 hostname）
@@ -849,7 +857,7 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 		(origin && (origin.includes('gd.scalarize.org') || origin.includes('gd.scalarize.cn'))) ||
 		(referer && (referer.includes('gd.scalarize.org') || referer.includes('gd.scalarize.cn'))) ||
 		(requestHostname && (requestHostname.includes('gd.scalarize.org') || requestHostname.includes('gd.scalarize.cn')));
-	
+
 	// 检查是否为 discover 模块请求（通过 Origin、Referer 或请求 hostname）
 	const isDiscoverRequest =
 		(origin && (origin.includes('discover.scalarize.org') || origin.includes('discover.scalarize.cn'))) ||

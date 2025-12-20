@@ -1,6 +1,6 @@
 /**
  * 数据库 Schema 定义和初始化
- * 
+ *
  * 架构说明：
  * - 当前：单一 Google OAuth 支持，users.id 直接使用 Google user ID
  * - 未来扩展：如需支持多 OAuth 提供商，需要：
@@ -85,16 +85,16 @@ export async function upsertUser(
 	console.log(`[数据库] 开始创建或更新用户: ${user.email}`);
 
 	const now = new Date().toISOString();
-	
+
 	// 先检查用户是否存在
 	const existingUser = await getUserById(db, user.id);
-	
+
 	if (existingUser) {
 		// 用户已存在，只更新 email（如果需要），保留用户自定义的 name 和 picture
 		console.log(`[数据库] 用户已存在，保留自定义字段，仅更新 email`);
 		console.log(`[数据库] 保留的 name: ${existingUser.name}, picture: ${existingUser.picture || 'null'}`);
 		console.log(`[数据库] OAuth 返回的 name: ${user.name}, picture: ${user.picture || 'null'}`);
-		
+
 		const result = await db
 			.prepare(
 				`
@@ -140,15 +140,9 @@ export async function upsertUser(
 /**
  * 根据 ID 查询用户
  */
-export async function getUserById(
-	db: D1Database,
-	userId: string
-): Promise<User | null> {
+export async function getUserById(db: D1Database, userId: string): Promise<User | null> {
 	console.log(`[数据库] 查询用户: ${userId}`);
-	const result = await db
-		.prepare('SELECT * FROM users WHERE id = ?')
-		.bind(userId)
-		.first<User>();
+	const result = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first<User>();
 
 	if (result) {
 		console.log(`[数据库] 找到用户: ${result.email}`);
@@ -162,15 +156,9 @@ export async function getUserById(
 /**
  * 根据邮箱查询用户
  */
-export async function getUserByEmail(
-	db: D1Database,
-	email: string
-): Promise<User | null> {
+export async function getUserByEmail(db: D1Database, email: string): Promise<User | null> {
 	console.log(`[数据库] 根据邮箱查询用户: ${email}`);
-	const result = await db
-		.prepare('SELECT * FROM users WHERE email = ?')
-		.bind(email)
-		.first<User>();
+	const result = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<User>();
 
 	if (result) {
 		console.log(`[数据库] 找到用户: ${result.id}`);
@@ -219,7 +207,10 @@ export async function updateUserProfile(
 	values.push(userId);
 
 	const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ? RETURNING *`;
-	const result = await db.prepare(sql).bind(...values).first<User>();
+	const result = await db
+		.prepare(sql)
+		.bind(...values)
+		.first<User>();
 
 	if (!result) {
 		throw new Error(`[数据库] 更新用户 Profile 失败: ${userId}`);
@@ -234,29 +225,29 @@ export async function updateUserProfile(
  */
 export async function getAllUsers(db: D1Database): Promise<User[]> {
 	console.log(`[数据库] 查询所有用户列表`);
-	
+
 	try {
 		// SQLite 不支持 NULLS LAST，使用 CASE 语句处理
 		const result = await db
-			.prepare(`
+			.prepare(
+				`
 				SELECT * FROM users 
 				ORDER BY 
 					CASE WHEN last_login_at IS NULL THEN 1 ELSE 0 END,
 					last_login_at DESC,
 					created_at DESC
-			`)
+			`
+			)
 			.all<User>();
-		
+
 		const users = result.results || [];
 		console.log(`[数据库] 找到 ${users.length} 个用户`);
 		return users;
 	} catch (error) {
 		// 如果 last_login_at 字段不存在，回退到按 created_at 排序
 		console.warn(`[数据库] 查询用户列表时出错，可能是 last_login_at 字段不存在，使用回退查询:`, error);
-		const result = await db
-			.prepare('SELECT * FROM users ORDER BY created_at DESC')
-			.all<User>();
-		
+		const result = await db.prepare('SELECT * FROM users ORDER BY created_at DESC').all<User>();
+
 		const users = result.results || [];
 		console.log(`[数据库] 使用回退查询找到 ${users.length} 个用户`);
 		return users;
@@ -289,10 +280,7 @@ export async function getOAuthAccountByProvider(
 /**
  * 根据用户 ID 查询所有关联的 OAuth 账号
  */
-export async function getOAuthAccountsByUserId(
-	db: D1Database,
-	userId: string
-): Promise<OAuthAccount[]> {
+export async function getOAuthAccountsByUserId(db: D1Database, userId: string): Promise<OAuthAccount[]> {
 	console.log(`[数据库] 查询用户的所有 OAuth 账号: ${userId}`);
 	const result = await db
 		.prepare('SELECT * FROM oauth_accounts WHERE user_id = ? ORDER BY linked_at DESC')
@@ -333,14 +321,16 @@ export async function linkOAuthAccount(
 		// 更新现有 OAuth 账号
 		console.log(`[数据库] OAuth 账号已存在，更新信息`);
 		const result = await db
-			.prepare(`
+			.prepare(
+				`
 				UPDATE oauth_accounts 
 				SET user_id = ?, email = ?, name = ?, picture = ?, 
 				    access_token = ?, refresh_token = ?, token_expires_at = ?,
 				    linked_method = ?, updated_at = ?
 				WHERE provider = ? AND provider_user_id = ?
 				RETURNING *
-			`)
+			`
+			)
 			.bind(
 				userId,
 				oauthData.email,
@@ -366,13 +356,15 @@ export async function linkOAuthAccount(
 
 	// 创建新的 OAuth 账号记录
 	const result = await db
-		.prepare(`
+		.prepare(
+			`
 			INSERT INTO oauth_accounts 
 			(id, user_id, provider, provider_user_id, email, name, picture,
 			 access_token, refresh_token, token_expires_at, linked_at, linked_method, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			RETURNING *
-		`)
+		`
+		)
 		.bind(
 			oauthAccountId,
 			userId,
@@ -436,16 +428,21 @@ export async function findOrCreateUserByEmail(
 	if (existingUser) {
 		// 找到相同邮箱的用户，自动关联 OAuth 账号
 		console.log(`[数据库] 找到相同邮箱的用户，自动关联 OAuth 账号`);
-		await linkOAuthAccount(db, existingUser.id, {
-			provider: oauthData.provider,
-			provider_user_id: oauthData.provider_user_id,
-			email: email,
-			name: oauthData.name,
-			picture: oauthData.picture,
-			access_token: oauthData.access_token,
-			refresh_token: oauthData.refresh_token,
-			token_expires_at: oauthData.token_expires_at,
-		}, 'auto');
+		await linkOAuthAccount(
+			db,
+			existingUser.id,
+			{
+				provider: oauthData.provider,
+				provider_user_id: oauthData.provider_user_id,
+				email: email,
+				name: oauthData.name,
+				picture: oauthData.picture,
+				access_token: oauthData.access_token,
+				refresh_token: oauthData.refresh_token,
+				token_expires_at: oauthData.token_expires_at,
+			},
+			'auto'
+		);
 		return { user: existingUser, isNewUser: false, linkedMethod: 'auto' };
 	}
 
@@ -461,16 +458,21 @@ export async function findOrCreateUserByEmail(
 	});
 
 	// 创建 OAuth 账号记录
-	await linkOAuthAccount(db, newUser.id, {
-		provider: oauthData.provider,
-		provider_user_id: oauthData.provider_user_id,
-		email: email,
-		name: oauthData.name,
-		picture: oauthData.picture,
-		access_token: oauthData.access_token,
-		refresh_token: oauthData.refresh_token,
-		token_expires_at: oauthData.token_expires_at,
-	}, 'manual');
+	await linkOAuthAccount(
+		db,
+		newUser.id,
+		{
+			provider: oauthData.provider,
+			provider_user_id: oauthData.provider_user_id,
+			email: email,
+			name: oauthData.name,
+			picture: oauthData.picture,
+			access_token: oauthData.access_token,
+			refresh_token: oauthData.refresh_token,
+			token_expires_at: oauthData.token_expires_at,
+		},
+		'manual'
+	);
 
 	return { user: newUser, isNewUser: true, linkedMethod: 'manual' };
 }
@@ -479,11 +481,7 @@ export async function findOrCreateUserByEmail(
  * 解绑 OAuth 账号
  * 注意：需要确保用户至少保留一个 OAuth 账号
  */
-export async function unlinkOAuthAccount(
-	db: D1Database,
-	userId: string,
-	provider: 'google' | 'password'
-): Promise<void> {
+export async function unlinkOAuthAccount(db: D1Database, userId: string, provider: 'google' | 'password'): Promise<void> {
 	console.log(`[数据库] 解绑 OAuth 账号: ${userId}/${provider}`);
 
 	// 检查用户是否还有其他 OAuth 账号
@@ -493,10 +491,7 @@ export async function unlinkOAuthAccount(
 	}
 
 	// 删除 OAuth 账号记录
-	await db
-		.prepare('DELETE FROM oauth_accounts WHERE user_id = ? AND provider = ?')
-		.bind(userId, provider)
-		.run();
+	await db.prepare('DELETE FROM oauth_accounts WHERE user_id = ? AND provider = ?').bind(userId, provider).run();
 
 	console.log(`[数据库] OAuth 账号解绑成功`);
 }
@@ -504,18 +499,11 @@ export async function unlinkOAuthAccount(
 /**
  * 更新 OAuth 账号的 user_id（用于账号合并）
  */
-export async function updateOAuthAccountUserId(
-	db: D1Database,
-	oauthAccountId: string,
-	newUserId: string
-): Promise<void> {
+export async function updateOAuthAccountUserId(db: D1Database, oauthAccountId: string, newUserId: string): Promise<void> {
 	console.log(`[数据库] 更新 OAuth 账号的 user_id: ${oauthAccountId} -> ${newUserId}`);
 
 	const now = new Date().toISOString();
-	await db
-		.prepare('UPDATE oauth_accounts SET user_id = ?, updated_at = ? WHERE id = ?')
-		.bind(newUserId, now, oauthAccountId)
-		.run();
+	await db.prepare('UPDATE oauth_accounts SET user_id = ?, updated_at = ? WHERE id = ?').bind(newUserId, now, oauthAccountId).run();
 
 	console.log(`[数据库] OAuth 账号 user_id 更新成功`);
 }
@@ -527,10 +515,7 @@ export async function updateOAuthAccountUserId(
 export async function deleteUser(db: D1Database, userId: string): Promise<void> {
 	console.log(`[数据库] 删除用户: ${userId}`);
 
-	await db
-		.prepare('DELETE FROM users WHERE id = ?')
-		.bind(userId)
-		.run();
+	await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
 
 	console.log(`[数据库] 用户删除成功`);
 }
@@ -538,12 +523,7 @@ export async function deleteUser(db: D1Database, userId: string): Promise<void> 
 /**
  * 更新用户密码
  */
-export async function updateUserPassword(
-	db: D1Database,
-	userId: string,
-	passwordHash: string,
-	mustChange: boolean = false
-): Promise<void> {
+export async function updateUserPassword(db: D1Database, userId: string, passwordHash: string, mustChange: boolean = false): Promise<void> {
 	console.log(`[数据库] 更新用户密码: ${userId}, 必须修改: ${mustChange}`);
 
 	const now = new Date().toISOString();
@@ -559,12 +539,7 @@ export async function updateUserPassword(
  * 邀请用户（创建用户并设置临时密码）
  * 注意：如果用户已存在，只更新密码和 must_change 标志
  */
-export async function inviteUser(
-	db: D1Database,
-	email: string,
-	name: string,
-	passwordHash: string
-): Promise<User> {
+export async function inviteUser(db: D1Database, email: string, name: string, passwordHash: string): Promise<User> {
 	console.log(`[数据库] 邀请用户: ${email}`);
 
 	const now = new Date().toISOString();
@@ -575,7 +550,7 @@ export async function inviteUser(
 		// 用户已存在，更新密码并设置必须修改标志
 		console.log(`[数据库] 用户已存在，更新密码和 must_change 标志`);
 		await updateUserPassword(db, existingUser.id, passwordHash, true);
-		
+
 		// 更新用户信息
 		await db
 			.prepare('UPDATE users SET name = ?, password_must_change = 1, updated_at = ? WHERE id = ?')
@@ -606,11 +581,13 @@ export async function inviteUser(
 	} while (true);
 
 	const result = await db
-		.prepare(`
+		.prepare(
+			`
 			INSERT INTO users (id, email, name, password_hash, password_must_change, created_at, updated_at)
 			VALUES (?, ?, ?, ?, 1, ?, ?)
 			RETURNING *
-		`)
+		`
+		)
 		.bind(userId, email, name, passwordHash, now, now)
 		.first<User>();
 
@@ -625,16 +602,10 @@ export async function inviteUser(
 /**
  * 获取用户的所有模块授权
  */
-export async function getUserModulePermissions(
-	db: D1Database,
-	userId: string
-): Promise<UserModulePermission[]> {
+export async function getUserModulePermissions(db: D1Database, userId: string): Promise<UserModulePermission[]> {
 	console.log(`[数据库] 查询用户模块授权: ${userId}`);
-	const result = await db
-		.prepare('SELECT * FROM user_module_permissions WHERE user_id = ?')
-		.bind(userId)
-		.all<UserModulePermission>();
-	
+	const result = await db.prepare('SELECT * FROM user_module_permissions WHERE user_id = ?').bind(userId).all<UserModulePermission>();
+
 	return result.results || [];
 }
 
@@ -643,37 +614,32 @@ export async function getUserModulePermissions(
  * profile 模块所有人可访问，admin 模块只有管理员可访问
  * 管理员自动拥有所有模块的访问权限
  */
-export async function hasModulePermission(
-	db: D1Database,
-	userId: string,
-	moduleId: string,
-	isAdmin: boolean
-): Promise<boolean> {
+export async function hasModulePermission(db: D1Database, userId: string, moduleId: string, isAdmin: boolean): Promise<boolean> {
 	// 管理员自动拥有所有模块的访问权限
 	if (isAdmin) {
 		return true;
 	}
-	
+
 	// profile 模块所有人可访问
 	if (moduleId === 'profile') {
 		return true;
 	}
-	
+
 	// admin 模块只有管理员可访问
 	if (moduleId === 'admin') {
 		return false; // 非管理员不能访问
 	}
-	
+
 	// favor、gd 和 discover 需要检查授权
 	if (moduleId === 'favor' || moduleId === 'gd' || moduleId === 'discover') {
 		const result = await db
 			.prepare('SELECT 1 FROM user_module_permissions WHERE user_id = ? AND module_id = ?')
 			.bind(userId, moduleId)
 			.first();
-		
+
 		return !!result;
 	}
-	
+
 	// 未知模块默认不允许访问
 	return false;
 }
@@ -688,12 +654,13 @@ export async function grantModulePermission(
 	grantedBy: string | null = null
 ): Promise<UserModulePermission> {
 	console.log(`[数据库] 授予用户模块权限: ${userId} -> ${moduleId}`);
-	
+
 	const now = new Date().toISOString();
 	const id = crypto.randomUUID();
-	
+
 	const result = await db
-		.prepare(`
+		.prepare(
+			`
 			INSERT INTO user_module_permissions (id, user_id, module_id, granted_at, granted_by, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(user_id, module_id) DO UPDATE SET
@@ -701,14 +668,15 @@ export async function grantModulePermission(
 				granted_by = ?,
 				updated_at = ?
 			RETURNING *
-		`)
+		`
+		)
 		.bind(id, userId, moduleId, now, grantedBy, now, now, now, grantedBy, now)
 		.first<UserModulePermission>();
-	
+
 	if (!result) {
 		throw new Error(`[数据库] 授予用户模块权限失败: ${userId} -> ${moduleId}`);
 	}
-	
+
 	console.log(`[数据库] 用户模块权限授予成功: ${userId} -> ${moduleId}`);
 	return result;
 }
@@ -716,18 +684,11 @@ export async function grantModulePermission(
 /**
  * 撤销用户模块权限
  */
-export async function revokeModulePermission(
-	db: D1Database,
-	userId: string,
-	moduleId: string
-): Promise<void> {
+export async function revokeModulePermission(db: D1Database, userId: string, moduleId: string): Promise<void> {
 	console.log(`[数据库] 撤销用户模块权限: ${userId} -> ${moduleId}`);
-	
-	await db
-		.prepare('DELETE FROM user_module_permissions WHERE user_id = ? AND module_id = ?')
-		.bind(userId, moduleId)
-		.run();
-	
+
+	await db.prepare('DELETE FROM user_module_permissions WHERE user_id = ? AND module_id = ?').bind(userId, moduleId).run();
+
 	console.log(`[数据库] 用户模块权限撤销成功: ${userId} -> ${moduleId}`);
 }
 
@@ -736,10 +697,7 @@ export async function revokeModulePermission(
  */
 export async function getAllUserModulePermissions(db: D1Database): Promise<UserModulePermission[]> {
 	console.log(`[数据库] 查询所有用户模块权限`);
-	const result = await db
-		.prepare('SELECT * FROM user_module_permissions ORDER BY user_id, module_id')
-		.all<UserModulePermission>();
-	
+	const result = await db.prepare('SELECT * FROM user_module_permissions ORDER BY user_id, module_id').all<UserModulePermission>();
+
 	return result.results || [];
 }
-

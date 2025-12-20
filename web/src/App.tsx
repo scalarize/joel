@@ -161,8 +161,36 @@ function App() {
 		}
 	};
 
-	const handleLogin = () => {
-		window.location.href = '/';
+	const handleLogin = async () => {
+		console.log('[前端] 开始 Google 登录流程');
+		try {
+			// 调用 API 获取授权 URL
+			const response = await fetch(getApiUrl('/api/auth/google'), {
+				method: 'GET',
+				credentials: 'include',
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error('[前端] 获取授权 URL 失败:', errorText);
+				alert('登录失败，请重试');
+				return;
+			}
+
+			const data = await response.json();
+			console.log('[前端] 获取到授权 URL，重定向到 Google 授权页面');
+
+			// 重定向到 Google 授权页面
+			if (data.authUrl) {
+				window.location.href = data.authUrl;
+			} else {
+				console.error('[前端] 响应中缺少 authUrl');
+				alert('登录失败，请重试');
+			}
+		} catch (error) {
+			console.error('[前端] 登录流程失败:', error);
+			alert('登录失败，请重试');
+		}
 	};
 
 	const handleLogout = async () => {
@@ -223,6 +251,11 @@ function App() {
 	// 简单的路由处理
 	const path = window.location.pathname;
 
+	// 处理 Google OAuth 回调路由
+	if (path === '/auth/google/callback') {
+		return <GoogleCallbackHandler />;
+	}
+
 	// 处理 SSO 路由
 	if (path === '/sso') {
 		return <SSOHandler user={user} />;
@@ -232,7 +265,7 @@ function App() {
 	if (user && user.mustChangePassword && path !== '/change-password') {
 		return (
 			<div className="app">
-				<Header user={user} onLogin={handleLogin} onLogout={handleLogout} />
+				<Header user={user} onLogout={handleLogout} />
 				<main className="main-content">
 					<ChangePasswordPrompt
 						user={user}
@@ -248,7 +281,7 @@ function App() {
 
 	return (
 		<div className="app">
-			<Header user={user} onLogin={handleLogin} onLogout={handleLogout} />
+			<Header user={user} onLogout={handleLogout} />
 			<main className="main-content">
 				{path === '/profile' ? (
 					user ? (
@@ -283,7 +316,7 @@ function App() {
 	);
 }
 
-function Header({ user, onLogin, onLogout }: { user: User | null; onLogin: () => void; onLogout: () => void }) {
+function Header({ user, onLogout }: { user: User | null; onLogout: () => void }) {
 	return (
 		<header className="header">
 			<div className="header-content">
@@ -310,9 +343,7 @@ function Header({ user, onLogin, onLogout }: { user: User | null; onLogin: () =>
 							</button>
 						</div>
 					) : (
-						<button onClick={onLogin} className="login-btn">
-							登录
-						</button>
+						''
 					)}
 				</div>
 			</div>
@@ -721,6 +752,96 @@ function ChangePasswordPrompt({ user, onPasswordChanged }: { user: User; onPassw
 					</button>
 				</form>
 			</div>
+		</div>
+	);
+}
+
+/**
+ * Google OAuth 回调处理器
+ * 接收 Google 回调，调用 API 处理，然后重定向
+ */
+function GoogleCallbackHandler() {
+	useEffect(() => {
+		const handleCallback = async () => {
+			try {
+				console.log('[Google Callback] 处理 Google OAuth 回调');
+
+				// 获取 URL 参数
+				const url = new URL(window.location.href);
+				const code = url.searchParams.get('code');
+				const state = url.searchParams.get('state');
+				const error = url.searchParams.get('error');
+
+				// 检查是否有错误
+				if (error) {
+					console.error('[Google Callback] OAuth 错误:', error);
+					alert(`登录失败: ${error}`);
+					window.location.href = '/';
+					return;
+				}
+
+				// 验证必要参数
+				if (!code || !state) {
+					console.error('[Google Callback] 缺少必要参数');
+					alert('登录失败: 缺少必要参数');
+					window.location.href = '/';
+					return;
+				}
+
+				// 构建 API 请求 URL，包含所有查询参数
+				const apiUrl = new URL(getApiUrl('/api/auth/google/callback'));
+				url.searchParams.forEach((value, key) => {
+					apiUrl.searchParams.set(key, value);
+				});
+
+				console.log('[Google Callback] 调用 API 处理回调:', apiUrl.toString());
+
+				// 调用 API 处理回调（使用 GET 方法，因为 Google 回调是 GET 请求）
+				const response = await fetch(apiUrl.toString(), {
+					method: 'GET',
+					credentials: 'include',
+					redirect: 'manual', // 不自动跟随重定向，手动处理
+				});
+
+				console.log('[Google Callback] API 响应状态:', response.status);
+
+				// 如果返回重定向，获取重定向 URL
+				if (response.status === 302 || response.status === 301) {
+					const location = response.headers.get('Location');
+					if (location) {
+						// 如果是相对路径，转换为绝对路径
+						const redirectUrl = location.startsWith('http') ? location : `${window.location.origin}${location}`;
+						console.log('[Google Callback] 重定向到:', redirectUrl);
+						window.location.href = redirectUrl;
+						return;
+					}
+				}
+
+				// 如果返回错误
+				if (!response.ok) {
+					const errorText = await response.text();
+					console.error('[Google Callback] API 返回错误:', errorText);
+					alert('登录失败，请重试');
+					window.location.href = '/';
+					return;
+				}
+
+				// 如果没有重定向，直接跳转到首页
+				console.log('[Google Callback] 跳转到首页');
+				window.location.href = '/';
+			} catch (error) {
+				console.error('[Google Callback] 处理失败:', error);
+				alert('登录失败，请重试');
+				window.location.href = '/';
+			}
+		};
+
+		handleCallback();
+	}, []);
+
+	return (
+		<div className="app">
+			<div className="loading">正在处理登录...</div>
 		</div>
 	);
 }

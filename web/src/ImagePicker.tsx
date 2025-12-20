@@ -144,18 +144,10 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 
 			{/* 模式切换 */}
 			<div className="image-picker-modes">
-				<button
-					type="button"
-					className={`mode-btn ${mode === 'url' ? 'active' : ''}`}
-					onClick={() => handleModeSwitch('url')}
-				>
+				<button type="button" className={`mode-btn ${mode === 'url' ? 'active' : ''}`} onClick={() => handleModeSwitch('url')}>
 					网络地址
 				</button>
-				<button
-					type="button"
-					className={`mode-btn ${mode === 'upload' ? 'active' : ''}`}
-					onClick={() => handleModeSwitch('upload')}
-				>
+				<button type="button" className={`mode-btn ${mode === 'upload' ? 'active' : ''}`} onClick={() => handleModeSwitch('upload')}>
 					上传图片
 				</button>
 			</div>
@@ -163,9 +155,13 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 			{/* 预览 */}
 			{value && (
 				<div className="image-preview">
-					<img src={value} alt="预览" onError={(e) => {
-						(e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Invalid+Image';
-					}} />
+					<img
+						src={value}
+						alt="预览"
+						onError={(e) => {
+							(e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Invalid+Image';
+						}}
+					/>
 					<button type="button" className="clear-btn" onClick={handleClear} title="清除">
 						×
 					</button>
@@ -200,14 +196,7 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 			{/* 文件上传模式 */}
 			{mode === 'upload' && (
 				<div className="image-picker-input">
-					<input
-						ref={fileInputRef}
-						type="file"
-						accept="image/*"
-						onChange={handleFileSelect}
-						className="file-input"
-						disabled={uploading}
-					/>
+					<input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="file-input" disabled={uploading} />
 					{uploading && <div className="upload-status">处理中...</div>}
 					{uploadError && <div className="upload-error">{uploadError}</div>}
 					<p className="form-hint">
@@ -220,16 +209,8 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 
 			{/* 图片裁剪器 */}
 			{showCropper && imageToCrop && (
-				<ImageCropper
-					imageSrc={imageToCrop}
-					onCropComplete={handleCropComplete}
-					onCancel={handleCropCancel}
-					aspect={1}
-					cropShape="round"
-				/>
+				<ImageCropper imageSrc={imageToCrop} onCropComplete={handleCropComplete} onCancel={handleCropCancel} aspect={1} cropShape="round" />
 			)}
 		</div>
 	);
 }
-
-
