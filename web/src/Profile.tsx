@@ -2,6 +2,28 @@ import { useState, useEffect } from 'react';
 import './Profile.css';
 import ImagePicker from './ImagePicker';
 
+/**
+ * 获取 API 基础 URL
+ * 根据当前域名判断使用 .org 还是 .cn
+ */
+function getApiBaseUrl(): string {
+	const hostname = window.location.hostname;
+	if (hostname === 'joel.scalarize.cn' || hostname.includes('.scalarize.cn')) {
+		return 'https://api.joel.scalarize.cn';
+	}
+	return 'https://api.joel.scalarize.org';
+}
+
+/**
+ * 构建完整的 API URL
+ */
+function getApiUrl(path: string): string {
+	const baseUrl = getApiBaseUrl();
+	// 确保 path 以 / 开头
+	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+	return `${baseUrl}${normalizedPath}`;
+}
+
 interface ProfileData {
 	id: string;
 	email: string;
@@ -30,7 +52,7 @@ export default function Profile() {
 			setLoading(true);
 			setError(null);
 
-			const response = await fetch('/api/profile', {
+			const response = await fetch(getApiUrl('/api/profile'), {
 				credentials: 'include',
 			});
 
@@ -65,7 +87,7 @@ export default function Profile() {
 			setError(null);
 			setSuccess(false);
 
-			const response = await fetch('/api/profile', {
+			const response = await fetch(getApiUrl('/api/profile'), {
 				method: 'PUT',
 				headers: {
 					'Content-Type': 'application/json',

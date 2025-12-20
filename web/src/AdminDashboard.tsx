@@ -6,6 +6,28 @@ import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Admin.css';
 
+/**
+ * 获取 API 基础 URL
+ * 根据当前域名判断使用 .org 还是 .cn
+ */
+function getApiBaseUrl(): string {
+	const hostname = window.location.hostname;
+	if (hostname === 'joel.scalarize.cn' || hostname.includes('.scalarize.cn')) {
+		return 'https://api.joel.scalarize.cn';
+	}
+	return 'https://api.joel.scalarize.org';
+}
+
+/**
+ * 构建完整的 API URL
+ */
+function getApiUrl(path: string): string {
+	const baseUrl = getApiBaseUrl();
+	// 确保 path 以 / 开头
+	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+	return `${baseUrl}${normalizedPath}`;
+}
+
 interface DateDataPoint {
 	date: string;
 	value: number;
@@ -55,7 +77,7 @@ export default function AdminDashboard() {
 				endDate,
 			});
 
-			const response = await fetch(`/api/admin/analytics?${params}`, {
+			const response = await fetch(getApiUrl(`/api/admin/analytics?${params}`), {
 				credentials: 'include',
 			});
 

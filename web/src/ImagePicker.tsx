@@ -2,6 +2,28 @@ import { useState, useRef } from 'react';
 import './ImagePicker.css';
 import ImageCropper from './ImageCropper';
 
+/**
+ * 获取 API 基础 URL
+ * 根据当前域名判断使用 .org 还是 .cn
+ */
+function getApiBaseUrl(): string {
+	const hostname = window.location.hostname;
+	if (hostname === 'joel.scalarize.cn' || hostname.includes('.scalarize.cn')) {
+		return 'https://api.joel.scalarize.cn';
+	}
+	return 'https://api.joel.scalarize.org';
+}
+
+/**
+ * 构建完整的 API URL
+ */
+function getApiUrl(path: string): string {
+	const baseUrl = getApiBaseUrl();
+	// 确保 path 以 / 开头
+	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+	return `${baseUrl}${normalizedPath}`;
+}
+
 interface ImagePickerProps {
 	value: string;
 	onChange: (url: string) => void;
@@ -59,7 +81,7 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 			const formData = new FormData();
 			formData.append('file', croppedImageBlob, 'cropped-image.jpg');
 
-			const response = await fetch('/api/upload/image', {
+			const response = await fetch(getApiUrl('/api/upload/image'), {
 				method: 'POST',
 				body: formData,
 				credentials: 'include',

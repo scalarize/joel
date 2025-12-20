@@ -79,11 +79,12 @@ export default {
 		const url = new URL(request.url);
 		const path = url.pathname;
 
-		console.log(`[请求] ${request.method} ${path}`);
+		console.log(`[请求] ${request.method} ${path}, URL: ${request.url}`);
 
 		try {
 			// API 路由（预留给前后端分离的前端调用）
 			if (path.startsWith('/api/')) {
+				console.log(`[路由] 匹配到 API 路由: ${path}`);
 				// 处理预检请求
 				if (request.method === 'OPTIONS') {
 					return handleApiOptions(request, env);
@@ -197,11 +198,13 @@ export default {
 					return handleApiChangePassword(request, env);
 				}
 
+				console.log(`[路由] API 路由未匹配，调用 handleApiNotFound`);
 				return handleApiNotFound(request, env);
 			}
 
 			// 根路径 - 显示登录页面或用户信息（保留兼容性，实际由 Pages 处理）
 			if (path === '/') {
+				console.log(`[路由] 匹配到根路径 /，调用 handleIndex`);
 				return handleIndex(request, env);
 			}
 
@@ -845,7 +848,9 @@ function handleApiPing(request: Request, env: Env): Response {
  * 注意：此接口只支持 Bearer JWT token 验证，不支持跨域 Cookie 会话验证
  */
 async function handleApiMe(request: Request, env: Env): Promise<Response> {
-	console.log('[API] /api/me 请求');
+	console.log('[API] /api/me 请求 - Worker 已拦截');
+	console.log(`[API] /api/me 完整 URL: ${request.url}`);
+	console.log(`[API] /api/me 请求方法: ${request.method}`);
 
 	// 检查请求来源，判断是否需要验证 gd 或 discover 模块权限
 	const origin = request.headers.get('Origin');
@@ -855,6 +860,7 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	
 	// 添加详细日志用于调试
 	console.log(`[API] /api/me 请求头信息 - Origin: ${origin || 'null'}, Referer: ${referer || 'null'}, Request Hostname: ${requestHostname}`);
+	console.log(`[API] /api/me Authorization header: ${request.headers.get('Authorization') || 'null'}`);
 
 	// 检查是否为 gd 模块请求（通过 Origin、Referer 或请求 hostname）
 	const isGdRequest =

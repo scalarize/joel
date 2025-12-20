@@ -4,6 +4,28 @@
 
 import { useEffect, useState } from 'react';
 import './Admin.css';
+
+/**
+ * 获取 API 基础 URL
+ * 根据当前域名判断使用 .org 还是 .cn
+ */
+function getApiBaseUrl(): string {
+	const hostname = window.location.hostname;
+	if (hostname === 'joel.scalarize.cn' || hostname.includes('.scalarize.cn')) {
+		return 'https://api.joel.scalarize.cn';
+	}
+	return 'https://api.joel.scalarize.org';
+}
+
+/**
+ * 构建完整的 API URL
+ */
+function getApiUrl(path: string): string {
+	const baseUrl = getApiBaseUrl();
+	// 确保 path 以 / 开头
+	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+	return `${baseUrl}${normalizedPath}`;
+}
 import UserModulePermissions from './UserModulePermissions';
 
 interface User {
@@ -44,7 +66,7 @@ export default function AdminUsers() {
 
 	const loadUserModules = async () => {
 		try {
-			const response = await fetch('/api/admin/user-modules', {
+			const response = await fetch(getApiUrl('/api/admin/user-modules'), {
 				credentials: 'include',
 			});
 			if (response.ok) {
@@ -64,7 +86,7 @@ export default function AdminUsers() {
 			setLoading(true);
 			setError(null);
 
-			const response = await fetch('/api/admin/users', {
+			const response = await fetch(getApiUrl('/api/admin/users'), {
 				credentials: 'include',
 			});
 
@@ -106,7 +128,7 @@ export default function AdminUsers() {
 		setInviteLoading(true);
 
 		try {
-			const response = await fetch('/api/admin/invite-user', {
+			const response = await fetch(getApiUrl('/api/admin/invite-user'), {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -178,7 +200,7 @@ export default function AdminUsers() {
 		setResetPasswordLoading(true);
 
 		try {
-			const response = await fetch('/api/admin/reset-user-password', {
+			const response = await fetch(getApiUrl('/api/admin/reset-user-password'), {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -218,7 +240,7 @@ export default function AdminUsers() {
 		setBanLoading(userId);
 
 		try {
-			const response = await fetch('/api/admin/ban-user', {
+			const response = await fetch(getApiUrl('/api/admin/ban-user'), {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',

@@ -3,6 +3,28 @@ import './App.css';
 import Profile from './Profile';
 import Admin from './Admin';
 
+/**
+ * 获取 API 基础 URL
+ * 根据当前域名判断使用 .org 还是 .cn
+ */
+function getApiBaseUrl(): string {
+	const hostname = window.location.hostname;
+	if (hostname === 'joel.scalarize.cn' || hostname.includes('.scalarize.cn')) {
+		return 'https://api.joel.scalarize.cn';
+	}
+	return 'https://api.joel.scalarize.org';
+}
+
+/**
+ * 构建完整的 API URL
+ */
+function getApiUrl(path: string): string {
+	const baseUrl = getApiBaseUrl();
+	// 确保 path 以 / 开头
+	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+	return `${baseUrl}${normalizedPath}`;
+}
+
 interface User {
 	id: string;
 	email: string;
@@ -71,9 +93,9 @@ function App() {
 		}
 	}, [user, loading]);
 
-	const loadModulePermissions = async () => {
+		const loadModulePermissions = async () => {
 		try {
-			const response = await fetch('/api/profile/modules', {
+			const response = await fetch(getApiUrl('/api/profile/modules'), {
 				credentials: 'include',
 			});
 			if (response.ok) {
@@ -101,7 +123,7 @@ function App() {
 				console.log('[前端] 使用 JWT token 进行认证');
 			}
 
-			const response = await fetch('/api/me', {
+			const response = await fetch(getApiUrl('/api/me'), {
 				credentials: 'include',
 				headers,
 			});
@@ -141,7 +163,7 @@ function App() {
 
 	const handleLogin = () => {
 		console.log('[前端] 跳转到 Google 登录');
-		window.location.href = '/api/auth/google';
+		window.location.href = getApiUrl('/api/auth/google');
 	};
 
 	const handleLogout = () => {
@@ -152,7 +174,7 @@ function App() {
 		console.log('[前端] 已清除本地状态，跳转到退出接口');
 		// 直接跳转到退出接口，让后端处理 Cookie 清除和重定向
 		// 后端会在重定向 URL 中添加 logout=1 参数
-		window.location.href = '/api/logout';
+		window.location.href = getApiUrl('/api/logout');
 	};
 
 	if (loading) {
@@ -279,7 +301,7 @@ function LoginPrompt({ onLogin, isCnHost }: { onLogin: () => void; isCnHost: boo
 		setLoading(true);
 
 		try {
-			const response = await fetch('/api/auth/login', {
+			const response = await fetch(getApiUrl('/api/auth/login'), {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -569,7 +591,7 @@ function ChangePasswordPrompt({ user, onPasswordChanged }: { user: User; onPassw
 				headers['Authorization'] = `Bearer ${token}`;
 			}
 
-			const response = await fetch('/api/profile/change-password', {
+			const response = await fetch(getApiUrl('/api/profile/change-password'), {
 				method: 'POST',
 				headers,
 				credentials: 'include',
