@@ -40,6 +40,16 @@ export interface OAuthAccount {
 	updated_at: string;
 }
 
+export interface UserModulePermission {
+	id: string;
+	user_id: string;
+	module_id: string; // 'profile' | 'favor' | 'gd' | 'admin'
+	granted_at: string;
+	granted_by: string | null; // 授权管理员 ID
+	created_at: string;
+	updated_at: string;
+}
+
 /**
  * 初始化数据库表结构
  * 需要在首次部署时手动执行，或通过 migration 执行
@@ -610,5 +620,120 @@ export async function inviteUser(
 
 	console.log(`[数据库] 用户邀请成功: ${email}`);
 	return result;
+}
+
+/**
+ * 获取用户的所有模块授权
+ */
+export async function getUserModulePermissions(
+	db: D1Database,
+	userId: string
+): Promise<UserModulePermission[]> {
+	console.log(`[数据库] 查询用户模块授权: ${userId}`);
+	const result = await db
+		.prepare('SELECT * FROM user_module_permissions WHERE user_id = ?')
+		.bind(userId)
+		.all<UserModulePermission>();
+	
+	return result.results || [];
+}
+
+/**
+ * 检查用户是否有某个模块的访问权限
+ * profile 模块所有人可访问，admin 模块只有管理员可访问
+ */
+export async function hasModulePermission(
+	db: D1Database,
+	userId: string,
+	moduleId: string,
+	isAdmin: boolean
+): Promise<boolean> {
+	// profile 模块所有人可访问
+	if (moduleId === 'profile') {
+		return true;
+	}
+	
+	// admin 模块只有管理员可访问
+	if (moduleId === 'admin') {
+		return isAdmin;
+	}
+	
+	// favor 和 gd 需要检查授权
+	if (moduleId === 'favor' || moduleId === 'gd') {
+		const result = await db
+			.prepare('SELECT 1 FROM user_module_permissions WHERE user_id = ? AND module_id = ?')
+			.bind(userId, moduleId)
+			.first();
+		
+		return !!result;
+	}
+	
+	// 未知模块默认不允许访问
+	return false;
+}
+
+/**
+ * 授予用户模块权限
+ */
+export async function grantModulePermission(
+	db: D1Database,
+	userId: string,
+	moduleId: string,
+	grantedBy: string | null = null
+): Promise<UserModulePermission> {
+	console.log(`[数据库] 授予用户模块权限: ${userId} -> ${moduleId}`);
+	
+	const now = new Date().toISOString();
+	const id = crypto.randomUUID();
+	
+	const result = await db
+		.prepare(`
+			INSERT INTO user_module_permissions (id, user_id, module_id, granted_at, granted_by, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(user_id, module_id) DO UPDATE SET
+				granted_at = ?,
+				granted_by = ?,
+				updated_at = ?
+			RETURNING *
+		`)
+		.bind(id, userId, moduleId, now, grantedBy, now, now, now, grantedBy, now)
+		.first<UserModulePermission>();
+	
+	if (!result) {
+		throw new Error(`[数据库] 授予用户模块权限失败: ${userId} -> ${moduleId}`);
+	}
+	
+	console.log(`[数据库] 用户模块权限授予成功: ${userId} -> ${moduleId}`);
+	return result;
+}
+
+/**
+ * 撤销用户模块权限
+ */
+export async function revokeModulePermission(
+	db: D1Database,
+	userId: string,
+	moduleId: string
+): Promise<void> {
+	console.log(`[数据库] 撤销用户模块权限: ${userId} -> ${moduleId}`);
+	
+	await db
+		.prepare('DELETE FROM user_module_permissions WHERE user_id = ? AND module_id = ?')
+		.bind(userId, moduleId)
+		.run();
+	
+	console.log(`[数据库] 用户模块权限撤销成功: ${userId} -> ${moduleId}`);
+}
+
+/**
+ * 获取所有用户的模块权限（用于管理员界面）
+ */
+export async function getAllUserModulePermissions(db: D1Database): Promise<UserModulePermission[]> {
+	console.log(`[数据库] 查询所有用户模块权限`);
+	const result = await db
+		.prepare('SELECT * FROM user_module_permissions ORDER BY user_id, module_id')
+		.all<UserModulePermission>();
+	
+	return result.results || [];
 }
 

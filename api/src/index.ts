@@ -21,6 +21,11 @@ import {
 	updateUserProfile,
 	getAllUsers,
 	findOrCreateUserByEmail,
+	getUserModulePermissions,
+	hasModulePermission,
+	grantModulePermission,
+	revokeModulePermission,
+	getAllUserModulePermissions,
 	getOAuthAccountByProvider,
 	getOAuthAccountsByUserId,
 	linkOAuthAccount,
@@ -160,6 +165,26 @@ export default {
 				// 管理员 API：重置用户密码
 				if (path === '/api/admin/reset-user-password' && request.method === 'POST') {
 					return handleAdminResetUserPassword(request, env);
+				}
+
+				// 用户 API：获取用户授权模块列表
+				if (path === '/api/profile/modules' && request.method === 'GET') {
+					return handleApiGetUserModules(request, env);
+				}
+
+				// 管理员 API：获取所有用户的模块权限
+				if (path === '/api/admin/user-modules' && request.method === 'GET') {
+					return handleAdminGetUserModules(request, env);
+				}
+
+				// 管理员 API：授予用户模块权限
+				if (path === '/api/admin/user-modules' && request.method === 'POST') {
+					return handleAdminGrantModule(request, env);
+				}
+
+				// 管理员 API：撤销用户模块权限
+				if (path === '/api/admin/user-modules' && request.method === 'DELETE') {
+					return handleAdminRevokeModule(request, env);
 				}
 
 				// 管理员 API：封禁/解封用户
@@ -2172,6 +2197,307 @@ async function handleAdminBanUser(request: Request, env: Env): Promise<Response>
 			{
 				error: 'Internal Server Error',
 				message: error instanceof Error ? error.message : '操作失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 获取当前用户的授权模块列表
+ */
+async function handleApiGetUserModules(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/profile/modules 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	const user = await getUserById(env.DB, session.userId);
+	if (!user) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Not Found',
+				message: '用户不存在',
+			},
+			404
+		);
+	}
+
+	const isAdmin = isAdminEmail(user.email);
+	const permissions = await getUserModulePermissions(env.DB, user.id);
+
+	// 构建模块权限列表
+	const modules = ['profile', 'favor', 'gd', 'admin'];
+	const modulePermissions: Record<string, boolean> = {};
+
+	for (const moduleId of modules) {
+		modulePermissions[moduleId] = await hasModulePermission(env.DB, user.id, moduleId, isAdmin);
+	}
+
+	console.log(`[API] /api/profile/modules 返回用户模块权限: ${user.email}`);
+	return jsonWithCors(
+		request,
+		env,
+		{
+			modules: modulePermissions,
+		},
+		200
+	);
+}
+
+/**
+ * API: 管理员获取所有用户的模块权限
+ */
+async function handleAdminGetUserModules(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/admin/user-modules GET 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	const user = await getUserById(env.DB, session.userId);
+	if (!user || !isAdminEmail(user.email)) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '需要管理员权限',
+			},
+			403
+		);
+	}
+
+	const allPermissions = await getAllUserModulePermissions(env.DB);
+	const allUsers = await getAllUsers(env.DB);
+
+	// 构建用户模块权限映射
+	const userModules: Record<string, string[]> = {};
+	for (const user of allUsers) {
+		userModules[user.id] = [];
+	}
+	for (const perm of allPermissions) {
+		if (!userModules[perm.user_id]) {
+			userModules[perm.user_id] = [];
+		}
+		userModules[perm.user_id].push(perm.module_id);
+	}
+
+	console.log('[API] /api/admin/user-modules 返回所有用户模块权限');
+	return jsonWithCors(
+		request,
+		env,
+		{
+			userModules,
+		},
+		200
+	);
+}
+
+/**
+ * API: 管理员授予用户模块权限
+ */
+async function handleAdminGrantModule(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/admin/user-modules POST 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	const adminUser = await getUserById(env.DB, session.userId);
+	if (!adminUser || !isAdminEmail(adminUser.email)) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '需要管理员权限',
+			},
+			403
+		);
+	}
+
+	try {
+		const body = await request.json();
+		const { userId, moduleId } = body as { userId?: string; moduleId?: string };
+
+		if (!userId || !moduleId) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'userId 和 moduleId 都是必填项',
+				},
+				400
+			);
+		}
+
+		// 验证模块 ID
+		if (!['favor', 'gd'].includes(moduleId)) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'moduleId 必须是 favor 或 gd',
+				},
+				400
+			);
+		}
+
+		// 验证用户是否存在
+		const targetUser = await getUserById(env.DB, userId);
+		if (!targetUser) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Not Found',
+					message: '用户不存在',
+				},
+				404
+			);
+		}
+
+		await grantModulePermission(env.DB, userId, moduleId, adminUser.id);
+
+		console.log(`[API] /api/admin/user-modules 授予权限成功: ${userId} -> ${moduleId}`);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				message: '模块权限授予成功',
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/admin/user-modules 授予权限失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '授予权限失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 管理员撤销用户模块权限
+ */
+async function handleAdminRevokeModule(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/admin/user-modules DELETE 请求');
+
+	const session = getSessionFromRequest(request);
+	if (!session) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	const adminUser = await getUserById(env.DB, session.userId);
+	if (!adminUser || !isAdminEmail(adminUser.email)) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '需要管理员权限',
+			},
+			403
+		);
+	}
+
+	try {
+		const url = new URL(request.url);
+		const userId = url.searchParams.get('userId');
+		const moduleId = url.searchParams.get('moduleId');
+
+		if (!userId || !moduleId) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'userId 和 moduleId 都是必填项',
+				},
+				400
+			);
+		}
+
+		// 验证模块 ID
+		if (!['favor', 'gd'].includes(moduleId)) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'moduleId 必须是 favor 或 gd',
+				},
+				400
+			);
+		}
+
+		await revokeModulePermission(env.DB, userId, moduleId);
+
+		console.log(`[API] /api/admin/user-modules 撤销权限成功: ${userId} -> ${moduleId}`);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				message: '模块权限撤销成功',
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/admin/user-modules 撤销权限失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '撤销权限失败',
 			},
 			500
 		);

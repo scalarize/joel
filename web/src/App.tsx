@@ -20,6 +20,7 @@ interface ApiResponse {
 function App() {
 	const [user, setUser] = useState<User | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [modulePermissions, setModulePermissions] = useState<Record<string, boolean> | null>(null);
 	
 	// 简化 host 判断，直接使用 window.location.hostname
 	const isCnHost = window.location.hostname === 'joel.scalarize.cn';
@@ -54,6 +55,23 @@ function App() {
 		checkAuth();
 	}, []);
 
+	const loadModulePermissions = async () => {
+		try {
+			const response = await fetch('/api/profile/modules', {
+				credentials: 'include',
+			});
+			if (response.ok) {
+				const data = await response.json();
+				setModulePermissions(data.modules);
+				console.log('[前端] 模块权限:', data.modules);
+			} else {
+				console.warn('[前端] 获取模块权限失败');
+			}
+		} catch (error) {
+			console.error('[前端] 获取模块权限失败:', error);
+		}
+	};
+
 	const checkAuth = async () => {
 		try {
 			console.log('[前端] 开始检查登录状态');
@@ -80,9 +98,14 @@ function App() {
 			console.log('[前端] 登录状态:', data.authenticated ? '已登录' : '未登录');
 
 			if (data.authenticated && data.user) {
+				console.log('[前端] 用户已登录:', data.user.email);
 				setUser(data.user);
+				// 加载用户模块权限
+				loadModulePermissions();
 			} else {
+				console.log('[前端] 用户未登录');
 				setUser(null);
+				setModulePermissions(null);
 				// 如果未认证，清除 token
 				if (token) {
 					console.log('[前端] 认证失败，清除 token');
@@ -92,6 +115,7 @@ function App() {
 		} catch (error) {
 			console.error('[前端] 检查登录状态失败:', error);
 			setUser(null);
+			setModulePermissions(null);
 			// 清除可能无效的 token
 			localStorage.removeItem('jwt_token');
 		} finally {
@@ -172,7 +196,7 @@ function App() {
 						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
 				) : user ? (
-					<Dashboard user={user} isCnHost={isCnHost} />
+					<Dashboard user={user} isCnHost={isCnHost} modulePermissions={modulePermissions} />
 				) : (
 					<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 				)}
@@ -390,7 +414,15 @@ function replaceDomainInUrl(url: string, isCnHost: boolean): string {
 	return url;
 }
 
-function Dashboard({ user, isCnHost }: { user: User | null; isCnHost: boolean }) {
+function Dashboard({ 
+	user, 
+	isCnHost, 
+	modulePermissions 
+}: { 
+	user: User | null; 
+	isCnHost: boolean;
+	modulePermissions: Record<string, boolean> | null;
+}) {
 	const modules = [
 		{
 			id: 'profile',
@@ -407,7 +439,6 @@ function Dashboard({ user, isCnHost }: { user: User | null; isCnHost: boolean })
 			url: '/favor',
 			icon: '🔖',
 			external: false,
-			adminOnly: true,
 		},
 		{
 			id: 'gd',
@@ -424,19 +455,30 @@ function Dashboard({ user, isCnHost }: { user: User | null; isCnHost: boolean })
 			url: '/admin',
 			icon: '⚙️',
 			external: false,
-			adminOnly: true,
 		},
 	].map((module) => ({
 		...module,
 		url: replaceDomainInUrl(module.url, isCnHost),
 	}));
 
-	// 如果不是管理员，过滤掉需要管理员权限的模块
+	// 根据用户权限过滤模块
 	const visibleModules = modules.filter((module) => {
-		if (module.adminOnly && !user?.isAdmin) {
-			return false;
+		// profile 模块所有人可访问
+		if (module.id === 'profile') {
+			return true;
 		}
-		return true;
+		
+		// admin 模块只有管理员可访问
+		if (module.id === 'admin') {
+			return user?.isAdmin === true;
+		}
+		
+		// favor 和 gd 需要检查授权
+		if (modulePermissions && modulePermissions[module.id] === true) {
+			return true;
+		}
+		
+		return false;
 	});
 
 	return (

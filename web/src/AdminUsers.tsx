@@ -34,10 +34,30 @@ export default function AdminUsers() {
 	const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
 	const [resetPasswordSuccess, setResetPasswordSuccess] = useState(false);
 	const [banLoading, setBanLoading] = useState<string | null>(null);
+	const [userModules, setUserModules] = useState<Record<string, string[]>>({});
+	const [moduleLoading, setModuleLoading] = useState<string | null>(null);
 
 	useEffect(() => {
 		loadUsers();
+		loadUserModules();
 	}, []);
+
+	const loadUserModules = async () => {
+		try {
+			const response = await fetch('/api/admin/user-modules', {
+				credentials: 'include',
+			});
+			if (response.ok) {
+				const data = await response.json();
+				setUserModules(data.userModules || {});
+				console.log('[AdminUsers] 用户模块权限加载成功');
+			} else {
+				console.error('[AdminUsers] 加载用户模块权限失败');
+			}
+		} catch (err) {
+			console.error('[AdminUsers] 加载用户模块权限失败:', err);
+		}
+	};
 
 	const loadUsers = async () => {
 		try {
@@ -228,6 +248,67 @@ export default function AdminUsers() {
 		}
 	};
 
+	const handleGrantModule = async (userId: string, moduleId: string) => {
+		setModuleLoading(`${userId}-${moduleId}`);
+
+		try {
+			const response = await fetch('/api/admin/user-modules', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				credentials: 'include',
+				body: JSON.stringify({
+					userId,
+					moduleId,
+				}),
+			});
+
+			const data = await response.json();
+
+			if (!response.ok) {
+				alert(data.message || '授予权限失败');
+				setModuleLoading(null);
+				return;
+			}
+
+			// 操作成功，刷新模块权限
+			loadUserModules();
+			setModuleLoading(null);
+		} catch (err) {
+			console.error('[AdminUsers] 授予模块权限失败:', err);
+			alert('授予权限失败，请稍后重试');
+			setModuleLoading(null);
+		}
+	};
+
+	const handleRevokeModule = async (userId: string, moduleId: string) => {
+		setModuleLoading(`${userId}-${moduleId}`);
+
+		try {
+			const response = await fetch(`/api/admin/user-modules?userId=${userId}&moduleId=${moduleId}`, {
+				method: 'DELETE',
+				credentials: 'include',
+			});
+
+			const data = await response.json();
+
+			if (!response.ok) {
+				alert(data.message || '撤销权限失败');
+				setModuleLoading(null);
+				return;
+			}
+
+			// 操作成功，刷新模块权限
+			loadUserModules();
+			setModuleLoading(null);
+		} catch (err) {
+			console.error('[AdminUsers] 撤销模块权限失败:', err);
+			alert('撤销权限失败，请稍后重试');
+			setModuleLoading(null);
+		}
+	};
+
 	if (loading) {
 		return <div className="admin-loading">加载中...</div>;
 	}
@@ -407,6 +488,7 @@ export default function AdminUsers() {
 							<th>头像</th>
 							<th>姓名</th>
 							<th>邮箱</th>
+							<th>模块权限</th>
 							<th>最后登录</th>
 							<th>注册时间</th>
 							<th>操作</th>
@@ -415,25 +497,86 @@ export default function AdminUsers() {
 					<tbody>
 						{users.length === 0 ? (
 							<tr>
-								<td colSpan={6} className="admin-users-empty">
+								<td colSpan={7} className="admin-users-empty">
 									暂无用户
 								</td>
 							</tr>
 						) : (
-							users.map((user) => (
-								<tr key={user.id} className={user.is_banned === 1 ? 'admin-user-banned' : ''}>
-									<td>
-										{user.picture ? (
-											<img src={user.picture} alt={user.name} className="admin-user-avatar" />
-										) : (
-											<div className="admin-user-avatar-placeholder">{user.name.charAt(0)}</div>
-										)}
-									</td>
-									<td>{user.name}</td>
-									<td>{user.email}</td>
-									<td>{formatDate(user.last_login_at)}</td>
-									<td>{formatDate(user.created_at)}</td>
-									<td>
+							users.map((user) => {
+								const userModuleList = userModules[user.id] || [];
+								const hasFavor = userModuleList.includes('favor');
+								const hasGd = userModuleList.includes('gd');
+								
+								return (
+									<tr key={user.id} className={user.is_banned === 1 ? 'admin-user-banned' : ''}>
+										<td>
+											{user.picture ? (
+												<img src={user.picture} alt={user.name} className="admin-user-avatar" />
+											) : (
+												<div className="admin-user-avatar-placeholder">{user.name.charAt(0)}</div>
+											)}
+										</td>
+										<td>{user.name}</td>
+										<td>{user.email}</td>
+										<td>
+											<div className="admin-user-modules">
+												<div className="admin-module-permission">
+													<span className="admin-module-label">Favor:</span>
+													{hasFavor ? (
+														<button
+															onClick={() => {
+																if (confirm(`确定要撤销用户 "${user.name}" 的 Favor 模块权限吗？`)) {
+																	handleRevokeModule(user.id, 'favor');
+																}
+															}}
+															className="admin-revoke-module-btn"
+															disabled={moduleLoading === `${user.id}-favor`}
+															title="撤销 Favor 权限"
+														>
+															{moduleLoading === `${user.id}-favor` ? '撤销中...' : '✅ 已授权'}
+														</button>
+													) : (
+														<button
+															onClick={() => handleGrantModule(user.id, 'favor')}
+															className="admin-grant-module-btn"
+															disabled={moduleLoading === `${user.id}-favor`}
+															title="授予 Favor 权限"
+														>
+															{moduleLoading === `${user.id}-favor` ? '授权中...' : '❌ 未授权'}
+														</button>
+													)}
+												</div>
+												<div className="admin-module-permission">
+													<span className="admin-module-label">GD:</span>
+													{hasGd ? (
+														<button
+															onClick={() => {
+																if (confirm(`确定要撤销用户 "${user.name}" 的 GD 模块权限吗？`)) {
+																	handleRevokeModule(user.id, 'gd');
+																}
+															}}
+															className="admin-revoke-module-btn"
+															disabled={moduleLoading === `${user.id}-gd`}
+															title="撤销 GD 权限"
+														>
+															{moduleLoading === `${user.id}-gd` ? '撤销中...' : '✅ 已授权'}
+														</button>
+													) : (
+														<button
+															onClick={() => handleGrantModule(user.id, 'gd')}
+															className="admin-grant-module-btn"
+															disabled={moduleLoading === `${user.id}-gd`}
+															title="授予 GD 权限"
+														>
+															{moduleLoading === `${user.id}-gd` ? '授权中...' : '❌ 未授权'}
+														</button>
+													)}
+												</div>
+											</div>
+										</td>
+										<td>{formatDate(user.last_login_at)}</td>
+										<td>{formatDate(user.created_at)}</td>
+										<td>
 										<div className="admin-user-actions">
 											<button
 												onClick={() => handleOpenResetPasswordModal(user)}
@@ -468,7 +611,8 @@ export default function AdminUsers() {
 										</div>
 									</td>
 								</tr>
-							))
+								);
+							})
 						)}
 					</tbody>
 				</table>
