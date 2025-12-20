@@ -726,15 +726,21 @@ function handleApiPing(request: Request, env: Env): Response {
 async function handleApiMe(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/me 请求');
 
-	// 检查请求来源，判断是否需要验证 gd 模块权限
+	// 检查请求来源，判断是否需要验证 gd 或 discover 模块权限
 	const origin = request.headers.get('Origin');
 	const referer = request.headers.get('Referer');
 	const isGdRequest =
 		(origin && (origin.includes('gd.scalarize.org') || origin.includes('gd.scalarize.cn'))) ||
 		(referer && (referer.includes('gd.scalarize.org') || referer.includes('gd.scalarize.cn')));
+	const isDiscoverRequest =
+		(origin && (origin.includes('discover.scalarize.org') || origin.includes('discover.scalarize.cn'))) ||
+		(referer && (referer.includes('discover.scalarize.org') || referer.includes('discover.scalarize.cn')));
 
 	if (isGdRequest) {
 		console.log('[API] /api/me 检测到来自 gd 项目的请求，需要验证 gd 模块权限');
+	}
+	if (isDiscoverRequest) {
+		console.log('[API] /api/me 检测到来自 discover 项目的请求，需要验证 discover 模块权限');
 	}
 
 	// 优先尝试从 JWT token 获取用户信息
@@ -765,6 +771,24 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 						);
 					}
 					console.log(`[API] /api/me 用户 ${user.email} 有 gd 模块权限`);
+				}
+
+				// 如果请求来自 discover 项目，检查用户是否有 discover 模块权限
+				if (isDiscoverRequest) {
+					const hasDiscoverPermission = await hasModulePermission(env.DB, user.id, 'discover', isAdmin);
+					if (!hasDiscoverPermission) {
+						console.log(`[API] /api/me 用户 ${user.email} 没有 discover 模块权限，视为未登录`);
+						return jsonWithCors(
+							request,
+							env,
+							{
+								authenticated: false,
+								user: null,
+							},
+							200
+						);
+					}
+					console.log(`[API] /api/me 用户 ${user.email} 有 discover 模块权限`);
 				}
 
 				console.log(`[API] /api/me JWT 验证成功，返回用户信息: ${user.email}, 管理员: ${isAdmin}, 需要修改密码: ${mustChangePassword}`);
@@ -818,6 +842,24 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 					);
 				}
 				console.log(`[API] /api/me 用户 ${user.email} 有 gd 模块权限`);
+			}
+
+			// 如果请求来自 discover 项目，检查用户是否有 discover 模块权限
+			if (isDiscoverRequest) {
+				const hasDiscoverPermission = await hasModulePermission(env.DB, user.id, 'discover', isAdmin);
+				if (!hasDiscoverPermission) {
+					console.log(`[API] /api/me 用户 ${user.email} 没有 discover 模块权限，视为未登录`);
+					return jsonWithCors(
+						request,
+						env,
+						{
+							authenticated: false,
+							user: null,
+						},
+						200
+					);
+				}
+				console.log(`[API] /api/me 用户 ${user.email} 有 discover 模块权限`);
 			}
 
 			console.log(
@@ -2288,7 +2330,7 @@ async function handleApiGetUserModules(request: Request, env: Env): Promise<Resp
 	const permissions = await getUserModulePermissions(env.DB, user.id);
 
 	// 构建模块权限列表
-	const modules = ['profile', 'favor', 'gd', 'admin'];
+	const modules = ['profile', 'favor', 'gd', 'discover', 'admin'];
 	const modulePermissions: Record<string, boolean> = {};
 
 	for (const moduleId of modules) {
@@ -2413,13 +2455,13 @@ async function handleAdminGrantModule(request: Request, env: Env): Promise<Respo
 		}
 
 		// 验证模块 ID
-		if (!['favor', 'gd'].includes(moduleId)) {
+		if (!['favor', 'gd', 'discover'].includes(moduleId)) {
 			return jsonWithCors(
 				request,
 				env,
 				{
 					error: 'Bad Request',
-					message: 'moduleId 必须是 favor 或 gd',
+					message: 'moduleId 必须是 favor、gd 或 discover',
 				},
 				400
 			);
@@ -2515,13 +2557,13 @@ async function handleAdminRevokeModule(request: Request, env: Env): Promise<Resp
 		}
 
 		// 验证模块 ID
-		if (!['favor', 'gd'].includes(moduleId)) {
+		if (!['favor', 'gd', 'discover'].includes(moduleId)) {
 			return jsonWithCors(
 				request,
 				env,
 				{
 					error: 'Bad Request',
-					message: 'moduleId 必须是 favor 或 gd',
+					message: 'moduleId 必须是 favor、gd 或 discover',
 				},
 				400
 			);

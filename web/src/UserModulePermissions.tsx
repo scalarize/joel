@@ -119,7 +119,7 @@ export default function UserModulePermissions({ userId, userName, userModules, o
 	};
 
 	// 模块配置
-	const modules = ['favor', 'gd'];
+	const modules = ['favor', 'gd', 'discover'];
 
 	return (
 		<div className="admin-user-modules">

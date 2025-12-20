@@ -449,6 +449,14 @@ function Dashboard({
 			external: false,
 		},
 		{
+			id: 'discover',
+			title: 'Discover',
+			description: 'Discover 相关工具和资源',
+			url: 'http://discover.scalarize.org/',
+			icon: '🔍',
+			external: false,
+		},
+		{
 			id: 'admin',
 			title: '系统管理',
 			description: '系统配置和管理入口',
@@ -478,7 +486,7 @@ function Dashboard({
 			return false; // 非管理员不能访问
 		}
 		
-		// favor 和 gd 需要检查授权
+		// favor、gd 和 discover 需要检查授权
 		if (modulePermissions && modulePermissions[module.id] === true) {
 			return true;
 		}

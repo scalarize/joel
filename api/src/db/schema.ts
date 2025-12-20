@@ -664,8 +664,8 @@ export async function hasModulePermission(
 		return false; // 非管理员不能访问
 	}
 	
-	// favor 和 gd 需要检查授权
-	if (moduleId === 'favor' || moduleId === 'gd') {
+	// favor、gd 和 discover 需要检查授权
+	if (moduleId === 'favor' || moduleId === 'gd' || moduleId === 'discover') {
 		const result = await db
 			.prepare('SELECT 1 FROM user_module_permissions WHERE user_id = ? AND module_id = ?')
 			.bind(userId, moduleId)

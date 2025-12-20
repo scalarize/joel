@@ -81,7 +81,7 @@ export interface Env {
 const app = new Hono<{ Bindings: Env }>()
 
 // 健康检查端点
-app.get('/health', (c) => {
+app.get('/api/health', (c) => {
   return c.json({
     status: 'ok',
     service: 'api-worker',
@@ -107,9 +107,7 @@ export default app
   "compatibility_date": "2024-12-01",
   "main": "src/index.ts",
   "routes": [
-    {
-      "pattern": "your-subdomain.yourdomain.com/api/*"
-    }
+    "your-subdomain.yourdomain.com/api/*"
   ],
   "d1_databases": [
     {
