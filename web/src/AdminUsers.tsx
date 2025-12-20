@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import './Admin.css';
+import UserModulePermissions from './UserModulePermissions';
 
 interface User {
 	id: string;
@@ -35,7 +36,6 @@ export default function AdminUsers() {
 	const [resetPasswordSuccess, setResetPasswordSuccess] = useState(false);
 	const [banLoading, setBanLoading] = useState<string | null>(null);
 	const [userModules, setUserModules] = useState<Record<string, string[]>>({});
-	const [moduleLoading, setModuleLoading] = useState<string | null>(null);
 
 	useEffect(() => {
 		loadUsers();
@@ -134,7 +134,7 @@ export default function AdminUsers() {
 			setInviteEmail('');
 			setInviteName('');
 			setInviteLoading(false);
-			
+
 			// 刷新用户列表
 			loadUsers();
 		} catch (err) {
@@ -248,67 +248,6 @@ export default function AdminUsers() {
 		}
 	};
 
-	const handleGrantModule = async (userId: string, moduleId: string) => {
-		setModuleLoading(`${userId}-${moduleId}`);
-
-		try {
-			const response = await fetch('/api/admin/user-modules', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				credentials: 'include',
-				body: JSON.stringify({
-					userId,
-					moduleId,
-				}),
-			});
-
-			const data = await response.json();
-
-			if (!response.ok) {
-				alert(data.message || '授予权限失败');
-				setModuleLoading(null);
-				return;
-			}
-
-			// 操作成功，刷新模块权限
-			loadUserModules();
-			setModuleLoading(null);
-		} catch (err) {
-			console.error('[AdminUsers] 授予模块权限失败:', err);
-			alert('授予权限失败，请稍后重试');
-			setModuleLoading(null);
-		}
-	};
-
-	const handleRevokeModule = async (userId: string, moduleId: string) => {
-		setModuleLoading(`${userId}-${moduleId}`);
-
-		try {
-			const response = await fetch(`/api/admin/user-modules?userId=${userId}&moduleId=${moduleId}`, {
-				method: 'DELETE',
-				credentials: 'include',
-			});
-
-			const data = await response.json();
-
-			if (!response.ok) {
-				alert(data.message || '撤销权限失败');
-				setModuleLoading(null);
-				return;
-			}
-
-			// 操作成功，刷新模块权限
-			loadUserModules();
-			setModuleLoading(null);
-		} catch (err) {
-			console.error('[AdminUsers] 撤销模块权限失败:', err);
-			alert('撤销权限失败，请稍后重试');
-			setModuleLoading(null);
-		}
-	};
-
 	if (loading) {
 		return <div className="admin-loading">加载中...</div>;
 	}
@@ -364,9 +303,7 @@ export default function AdminUsers() {
 											<code className="admin-invite-password">{inviteSuccess.password}</code>
 										</div>
 									</div>
-									<p className="admin-invite-warning">
-										⚠️ 注意：用户首次登录后必须修改密码才能正常使用
-									</p>
+									<p className="admin-invite-warning">⚠️ 注意：用户首次登录后必须修改密码才能正常使用</p>
 									<button onClick={handleCloseInviteModal} className="admin-modal-btn">
 										关闭
 									</button>
@@ -432,9 +369,7 @@ export default function AdminUsers() {
 									<p className="admin-reset-password-success-text">
 										用户 <strong>{resetPasswordUserName}</strong> 的密码已重置
 									</p>
-									<p className="admin-reset-password-warning">
-										⚠️ 用户下次登录后需要修改密码才能正常使用
-									</p>
+									<p className="admin-reset-password-warning">⚠️ 用户下次登录后需要修改密码才能正常使用</p>
 									<button onClick={handleCloseResetPasswordModal} className="admin-modal-btn">
 										关闭
 									</button>
@@ -504,9 +439,7 @@ export default function AdminUsers() {
 						) : (
 							users.map((user) => {
 								const userModuleList = userModules[user.id] || [];
-								const hasFavor = userModuleList.includes('favor');
-								const hasGd = userModuleList.includes('gd');
-								
+
 								return (
 									<tr key={user.id} className={user.is_banned === 1 ? 'admin-user-banned' : ''}>
 										<td>
@@ -519,98 +452,50 @@ export default function AdminUsers() {
 										<td>{user.name}</td>
 										<td>{user.email}</td>
 										<td>
-											<div className="admin-user-modules">
-												<div className="admin-module-permission">
-													<span className="admin-module-label">Favor:</span>
-													{hasFavor ? (
-														<button
-															onClick={() => {
-																if (confirm(`确定要撤销用户 "${user.name}" 的 Favor 模块权限吗？`)) {
-																	handleRevokeModule(user.id, 'favor');
-																}
-															}}
-															className="admin-revoke-module-btn"
-															disabled={moduleLoading === `${user.id}-favor`}
-															title="撤销 Favor 权限"
-														>
-															{moduleLoading === `${user.id}-favor` ? '撤销中...' : '✅ 已授权'}
-														</button>
-													) : (
-														<button
-															onClick={() => handleGrantModule(user.id, 'favor')}
-															className="admin-grant-module-btn"
-															disabled={moduleLoading === `${user.id}-favor`}
-															title="授予 Favor 权限"
-														>
-															{moduleLoading === `${user.id}-favor` ? '授权中...' : '❌ 未授权'}
-														</button>
-													)}
-												</div>
-												<div className="admin-module-permission">
-													<span className="admin-module-label">GD:</span>
-													{hasGd ? (
-														<button
-															onClick={() => {
-																if (confirm(`确定要撤销用户 "${user.name}" 的 GD 模块权限吗？`)) {
-																	handleRevokeModule(user.id, 'gd');
-																}
-															}}
-															className="admin-revoke-module-btn"
-															disabled={moduleLoading === `${user.id}-gd`}
-															title="撤销 GD 权限"
-														>
-															{moduleLoading === `${user.id}-gd` ? '撤销中...' : '✅ 已授权'}
-														</button>
-													) : (
-														<button
-															onClick={() => handleGrantModule(user.id, 'gd')}
-															className="admin-grant-module-btn"
-															disabled={moduleLoading === `${user.id}-gd`}
-															title="授予 GD 权限"
-														>
-															{moduleLoading === `${user.id}-gd` ? '授权中...' : '❌ 未授权'}
-														</button>
-													)}
-												</div>
-											</div>
+											<UserModulePermissions
+												userId={user.id}
+												userName={user.name}
+												userModules={userModuleList}
+												onPermissionChange={loadUserModules}
+											/>
 										</td>
 										<td>{formatDate(user.last_login_at)}</td>
 										<td>{formatDate(user.created_at)}</td>
 										<td>
-										<div className="admin-user-actions">
-											<button
-												onClick={() => handleOpenResetPasswordModal(user)}
-												className="admin-reset-password-btn"
-												title="重置用户密码"
-											>
-												🔑 重置密码
-											</button>
-											{user.is_banned === 1 ? (
+											<div className="admin-user-actions">
 												<button
-													onClick={() => handleBanUser(user.id, false)}
-													className="admin-unban-btn"
-													title="解封用户"
-													disabled={banLoading === user.id}
+													onClick={() => handleOpenResetPasswordModal(user)}
+													className="admin-reset-password-btn"
+													title="重置用户密码"
 												>
-													{banLoading === user.id ? '解封中...' : '✅ 解封'}
+													🔑 重置密码
 												</button>
-											) : (
-												<button
-													onClick={() => {
-														if (confirm(`确定要封禁用户 "${user.name}" (${user.email}) 吗？封禁后该用户将无法登录。`)) {
-															handleBanUser(user.id, true);
-														}
-													}}
-													className="admin-ban-btn"
-													title="封禁用户"
-													disabled={banLoading === user.id}
-												>
-													{banLoading === user.id ? '封禁中...' : '🚫 封禁'}
-												</button>
-											)}
-										</div>
-									</td>
-								</tr>
+												{user.is_banned === 1 ? (
+													<button
+														onClick={() => handleBanUser(user.id, false)}
+														className="admin-unban-btn"
+														title="解封用户"
+														disabled={banLoading === user.id}
+													>
+														{banLoading === user.id ? '解封中...' : '✅ 解封'}
+													</button>
+												) : (
+													<button
+														onClick={() => {
+															if (confirm(`确定要封禁用户 "${user.name}" (${user.email}) 吗？封禁后该用户将无法登录。`)) {
+																handleBanUser(user.id, true);
+															}
+														}}
+														className="admin-ban-btn"
+														title="封禁用户"
+														disabled={banLoading === user.id}
+													>
+														{banLoading === user.id ? '封禁中...' : '🚫 封禁'}
+													</button>
+												)}
+											</div>
+										</td>
+									</tr>
 								);
 							})
 						)}

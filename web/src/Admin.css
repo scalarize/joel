@@ -287,6 +287,20 @@
 	font-size: 0.9rem;
 }
 
+.module-icon-placeholder {
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background-color: #667eea;
+	color: white;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 600;
+	font-size: 0.75rem;
+	flex-shrink: 0;
+}
+
 .admin-grant-module-btn,
 .admin-revoke-module-btn {
 	padding: 4px 12px;
