@@ -537,13 +537,39 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 	// 检查是否有错误
 	if (error) {
 		console.error(`[Callback] OAuth 错误: ${error}`);
-		return new Response(`OAuth 错误: ${error}`, { status: 400 });
+		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: false,
+				error: 'oauth_error',
+				message: `OAuth 错误: ${error}`,
+			},
+			400,
+			{
+				'Set-Cookie': clearStateCookie,
+			}
+		);
 	}
 
 	// 验证必要参数
 	if (!code || !state) {
 		console.error(`[Callback] 缺少必要参数: code=${!!code}, state=${!!state}`);
-		return new Response('缺少必要参数', { status: 400 });
+		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: false,
+				error: 'missing_params',
+				message: '缺少必要参数',
+			},
+			400,
+			{
+				'Set-Cookie': clearStateCookie,
+			}
+		);
 	}
 
 	// 验证 state（从 Cookie 中获取）
@@ -573,7 +599,20 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 	const storedState = cookies['oauth_state'];
 	if (!storedState || storedState !== randomState) {
 		console.error(`[Callback] State 验证失败`);
-		return new Response('State 验证失败', { status: 400 });
+		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: false,
+				error: 'invalid_state',
+				message: 'State 验证失败',
+			},
+			400,
+			{
+				'Set-Cookie': clearStateCookie,
+			}
+		);
 	}
 
 	console.log(`[Callback] State 验证成功`);
@@ -581,7 +620,20 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 	// 验证环境变量
 	if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
 		console.error(`[Callback] Google OAuth 配置不完整`);
-		return new Response('Google OAuth 未配置', { status: 500 });
+		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: false,
+				error: 'config_error',
+				message: 'Google OAuth 未配置',
+			},
+			500,
+			{
+				'Set-Cookie': clearStateCookie,
+			}
+		);
 	}
 
 	// 构建回调 URL - 必须与授权时使用的 redirect_uri 完全一致
@@ -665,25 +717,19 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		// 检查用户是否被封禁
 		if (user.is_banned === 1) {
 			console.log(`[Callback] 用户已被封禁: ${user.email}`);
-			const frontendUrl = env.FRONTEND_URL || '/';
-			return new Response(
-				`<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="UTF-8">
-	<title>账号已被封禁</title>
-</head>
-<body>
-	<h1>账号已被封禁</h1>
-	<p>您的账号已被封禁，无法登录系统。</p>
-	<p><a href="${frontendUrl}">返回首页</a></p>
-</body>
-</html>`,
+			// 清除 state cookie
+			const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
+			return jsonWithCors(
+				request,
+				env,
 				{
-					status: 403,
-					headers: {
-						'Content-Type': 'text/html; charset=utf-8',
-					},
+					success: false,
+					error: 'banned',
+					message: '账号已被封禁，无法登录系统',
+				},
+				403,
+				{
+					'Set-Cookie': clearStateCookie,
 				}
 			);
 		}
@@ -702,70 +748,42 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		const jwtToken = await generateJWT(user.id, user.email, user.name, env);
 		console.log(`[Callback] JWT token 生成成功`);
 
-		// 创建会话 Cookie（兼容旧版本）
-		const sessionCookie = setSessionCookie(
-			{
-				userId: user.id,
-				email: user.email,
-				name: user.name,
-			},
-			isProduction
-		);
-
 		// 清除 state cookie
 		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
 
-		console.log(`[Callback] 登录成功，准备重定向到前端页面`);
+		console.log(`[Callback] 登录成功，返回 JSON 响应`);
 
-		// 计算登录成功后重定向目标：
-		// 1. 优先使用 state 参数中编码的 redirect URL（登录前要访问的页面）
-		// 2. 如果配置了 FRONTEND_URL，则重定向到前端根路径
-		// 3. 否则退回到当前 Worker 的根路径（兼容旧行为）
-		let targetUrl = env.FRONTEND_URL || '/';
-
-		// 优先使用 state 参数中编码的 redirect URL
-		if (redirectFromState) {
-			try {
-				// 验证 redirect URL 是否为同源或允许的域名（安全考虑）
-				const redirectUrl = new URL(redirectFromState, new URL(request.url).origin);
-				const isAllowedDomain =
-					redirectUrl.hostname.endsWith('.scalarize.org') ||
-					redirectUrl.hostname === 'scalarize.org' ||
-					redirectUrl.hostname.endsWith('.scalarize.cn') ||
-					redirectUrl.hostname === 'scalarize.cn';
-				if (isAllowedDomain) {
-					targetUrl = redirectFromState;
-					console.log(`[Callback] 使用 state 中的跳转目标: ${targetUrl}`);
-				} else {
-					console.warn(`[Callback] state 中的跳转目标域名不允许: ${redirectUrl.hostname}`);
-				}
-			} catch (error) {
-				console.warn(`[Callback] state 中的跳转目标 URL 格式无效: ${redirectFromState}`, error);
+		// 返回 JSON 响应，包含 JWT token
+		// 不再设置 Cookie，只使用 JWT token
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				token: jwtToken,
+				message: '登录成功',
+			},
+			200,
+			{
+				'Set-Cookie': clearStateCookie,
 			}
-		}
-
-		// 将 JWT token 添加到 URL 参数中
-		// 如果 targetUrl 是相对路径，需要使用 baseUrl 作为基础
-		const targetUrlObj = new URL(targetUrl, baseUrl);
-		targetUrlObj.searchParams.set('token', jwtToken);
-		const finalTargetUrl = targetUrlObj.toString();
-
-		console.log(`[Callback] 重定向目标: ${finalTargetUrl}`);
-
-		// 重定向到目标页面
-		const headers = new Headers();
-		headers.set('Location', finalTargetUrl);
-		// 注意：Set-Cookie 不能用逗号拼接，需要多次 append
-		headers.append('Set-Cookie', sessionCookie);
-		headers.append('Set-Cookie', clearStateCookie);
-
-		return new Response(null, {
-			status: 302,
-			headers,
-		});
+		);
 	} catch (error) {
 		console.error(`[Callback] 处理失败:`, error);
-		return new Response(`OAuth 回调处理失败: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 500 });
+		const clearStateCookie = `oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: false,
+				error: 'server_error',
+				message: `OAuth 回调处理失败: ${error instanceof Error ? error.message : 'Unknown error'}`,
+			},
+			500,
+			{
+				'Set-Cookie': clearStateCookie,
+			}
+		);
 	}
 }
 
@@ -1595,18 +1613,22 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 	let allowedOrigin: string | null = null;
 
 	if (origin) {
+		console.log(`[CORS] 请求 Origin: ${origin}`);
 		// 允许 scalarize.org 的所有子域名（包括 joel.scalarize.org 和 gd.scalarize.org）
-		if (origin.endsWith('.scalarize.org') || origin === 'https://scalarize.org') {
+		if (origin.endsWith('.scalarize.org') || origin === 'https://scalarize.org' || origin === 'http://scalarize.org') {
 			allowedOrigin = origin;
+			console.log(`[CORS] 允许 scalarize.org 域名: ${origin}`);
 		}
 		// 允许 scalarize.cn 的所有子域名（包括 joel.scalarize.cn 和 gd.scalarize.cn）
 		// 用于支持 gd.scalarize.cn 通过 JWT bearer token 访问 joel.scalarize.cn 的 API
-		else if (origin.endsWith('.scalarize.cn') || origin === 'https://scalarize.cn') {
+		else if (origin.endsWith('.scalarize.cn') || origin === 'https://scalarize.cn' || origin === 'http://scalarize.cn') {
 			allowedOrigin = origin;
+			console.log(`[CORS] 允许 scalarize.cn 域名: ${origin}`);
 		}
 		// 开发环境：允许 localhost
 		else if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
 			allowedOrigin = origin;
+			console.log(`[CORS] 允许 localhost: ${origin}`);
 		}
 		// 如果配置了前端地址，也允许该地址（用于特殊情况）
 		else if (env.FRONTEND_URL) {
@@ -1614,21 +1636,35 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 				const frontendOrigin = new URL(env.FRONTEND_URL).origin;
 				if (origin === frontendOrigin) {
 					allowedOrigin = origin;
+					console.log(`[CORS] 允许 FRONTEND_URL: ${origin}`);
 				}
 			} catch (error) {
 				console.error('[CORS] 解析 FRONTEND_URL 失败:', error);
 			}
+		} else {
+			console.log(`[CORS] Origin 不匹配任何规则: ${origin}`);
 		}
+	} else {
+		console.log(`[CORS] 请求没有 Origin header`);
 	}
 
 	if (allowedOrigin) {
 		headers.set('Access-Control-Allow-Origin', allowedOrigin);
 		headers.set('Vary', 'Origin');
 		headers.set('Access-Control-Allow-Credentials', 'true');
+		console.log(`[CORS] 设置 CORS headers，允许的 Origin: ${allowedOrigin}`);
+	} else {
+		console.log(`[CORS] 未设置 Access-Control-Allow-Origin（Origin 不匹配）`);
 	}
 
-	headers.set('Access-Control-Allow-Headers', request.headers.get('Access-Control-Request-Headers') || 'Content-Type, Authorization');
+	// 获取请求的 Access-Control-Request-Headers，如果没有则使用默认值
+	const requestedHeaders = request.headers.get('Access-Control-Request-Headers');
+	const allowHeaders = requestedHeaders || 'Content-Type, Authorization';
+	headers.set('Access-Control-Allow-Headers', allowHeaders);
 	headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,DELETE,OPTIONS');
+
+	console.log(`[CORS] 设置 Access-Control-Allow-Headers: ${allowHeaders}`);
+	console.log(`[CORS] 设置 Access-Control-Allow-Methods: GET,HEAD,POST,PUT,DELETE,OPTIONS`);
 
 	return headers;
 }

@@ -70,6 +70,9 @@ function App() {
 			if (token) {
 				console.log('[前端] 检测到 URL 中的 token，存储到 localStorage');
 				localStorage.setItem('jwt_token', token);
+				// 验证 token 是否已存储
+				const storedToken = localStorage.getItem('jwt_token');
+				console.log('[前端] Token 存储验证:', storedToken ? `已存储 (${storedToken.substring(0, 20)}...)` : '未存储');
 				// 清除 URL 中的 token 参数
 				url.searchParams.delete('token');
 				window.history.replaceState({}, '', url.toString());
@@ -77,6 +80,12 @@ function App() {
 			}
 
 			// 验证登录状态（会使用 localStorage 中的 token）
+			// 在调用前再次确认 token 是否存在
+			const tokenBeforeCheck = localStorage.getItem('jwt_token');
+			console.log(
+				'[前端] 调用 checkAuth 前，localStorage 中的 token:',
+				tokenBeforeCheck ? `存在 (${tokenBeforeCheck.substring(0, 20)}...)` : '不存在'
+			);
 			await checkAuth();
 		};
 
@@ -121,15 +130,26 @@ function App() {
 			console.log('[前端] 开始检查登录状态');
 			// 从 localStorage 获取 token（如果有）
 			const token = localStorage.getItem('jwt_token');
+			console.log('[前端] checkAuth 中读取的 token:', token ? `存在 (${token.substring(0, 20)}...)` : '不存在');
+
+			// 构建 headers 对象
 			const headers: HeadersInit = {
 				'Content-Type': 'application/json',
 			};
+
 			if (token) {
 				headers['Authorization'] = `Bearer ${token}`;
-				console.log('[前端] 使用 JWT token 进行认证');
+				console.log('[前端] 使用 JWT token 进行认证，Authorization header 已设置');
+				console.log('[前端] Authorization header 值:', `Bearer ${token.substring(0, 20)}...`);
+			} else {
+				console.log('[前端] 未找到 JWT token，不设置 Authorization header');
 			}
 
-			const response = await fetch(getApiUrl('/api/me'), {
+			const apiUrl = getApiUrl('/api/me');
+			console.log('[前端] 调用 API:', apiUrl);
+			console.log('[前端] 请求 headers:', JSON.stringify(headers, null, 2));
+
+			const response = await fetch(apiUrl, {
 				credentials: 'include',
 				headers,
 			});
@@ -818,6 +838,9 @@ function ChangePasswordPrompt({ user, onPasswordChanged }: { user: User; onPassw
  * 接收 Google 回调，调用 API 处理，然后重定向
  */
 function GoogleCallbackHandler() {
+	const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'banned'>('loading');
+	const [message, setMessage] = useState<string>('正在处理登录...');
+
 	useEffect(() => {
 		const handleCallback = async () => {
 			try {
@@ -832,16 +855,22 @@ function GoogleCallbackHandler() {
 				// 检查是否有错误
 				if (error) {
 					console.error('[Google Callback] OAuth 错误:', error);
-					alert(`登录失败: ${error}`);
-					window.location.href = '/';
+					setStatus('error');
+					setMessage(`登录失败: ${error}`);
+					setTimeout(() => {
+						window.location.href = '/';
+					}, 3000);
 					return;
 				}
 
 				// 验证必要参数
 				if (!code || !state) {
 					console.error('[Google Callback] 缺少必要参数');
-					alert('登录失败: 缺少必要参数');
-					window.location.href = '/';
+					setStatus('error');
+					setMessage('登录失败: 缺少必要参数');
+					setTimeout(() => {
+						window.location.href = '/';
+					}, 3000);
 					return;
 				}
 
@@ -857,39 +886,62 @@ function GoogleCallbackHandler() {
 				const response = await fetch(apiUrl.toString(), {
 					method: 'GET',
 					credentials: 'include',
-					redirect: 'manual', // 不自动跟随重定向，手动处理
 				});
 
 				console.log('[Google Callback] API 响应状态:', response.status);
 
-				// 如果返回重定向，获取重定向 URL
-				if (response.status === 302 || response.status === 301) {
-					const location = response.headers.get('Location');
-					if (location) {
-						// 如果是相对路径，转换为绝对路径
-						const redirectUrl = location.startsWith('http') ? location : `${window.location.origin}${location}`;
-						console.log('[Google Callback] 重定向到:', redirectUrl);
-						window.location.href = redirectUrl;
-						return;
-					}
-				}
+				// 解析 JSON 响应
+				const data = await response.json();
 
-				// 如果返回错误
 				if (!response.ok) {
-					const errorText = await response.text();
-					console.error('[Google Callback] API 返回错误:', errorText);
-					alert('登录失败，请重试');
-					window.location.href = '/';
+					console.error('[Google Callback] API 返回错误:', data);
+
+					// 检查是否是封禁错误
+					if (data.error === 'banned') {
+						setStatus('banned');
+						setMessage(data.message || '账号已被封禁，无法登录系统');
+					} else {
+						setStatus('error');
+						setMessage(data.message || '登录失败，请重试');
+					}
+
+					setTimeout(() => {
+						window.location.href = '/';
+					}, 3000);
 					return;
 				}
 
-				// 如果没有重定向，直接跳转到首页
-				console.log('[Google Callback] 跳转到首页');
-				window.location.href = '/';
+				// 检查响应是否成功
+				if (data.success && data.token) {
+					console.log('[Google Callback] 登录成功，存储 JWT token');
+					localStorage.setItem('jwt_token', data.token);
+
+					// 清除 URL 中的参数
+					const cleanUrl = new URL(window.location.origin);
+					window.history.replaceState({}, '', cleanUrl.toString());
+
+					setStatus('success');
+					setMessage('登录成功，正在跳转...');
+
+					// 刷新页面以触发 checkAuth
+					setTimeout(() => {
+						window.location.href = '/';
+					}, 1000);
+				} else {
+					console.error('[Google Callback] API 响应格式错误:', data);
+					setStatus('error');
+					setMessage('登录失败: 响应格式错误');
+					setTimeout(() => {
+						window.location.href = '/';
+					}, 3000);
+				}
 			} catch (error) {
 				console.error('[Google Callback] 处理失败:', error);
-				alert('登录失败，请重试');
-				window.location.href = '/';
+				setStatus('error');
+				setMessage('登录失败，请重试');
+				setTimeout(() => {
+					window.location.href = '/';
+				}, 3000);
 			}
 		};
 
@@ -898,7 +950,22 @@ function GoogleCallbackHandler() {
 
 	return (
 		<div className="app">
-			<div className="loading">正在处理登录...</div>
+			<div className="loading">
+				{status === 'loading' && <div>正在处理登录...</div>}
+				{status === 'success' && <div>{message}</div>}
+				{status === 'error' && (
+					<div>
+						<div style={{ color: '#d32f2f', marginBottom: '1rem' }}>{message}</div>
+						<div style={{ fontSize: '14px', color: '#666' }}>3 秒后自动跳转到首页</div>
+					</div>
+				)}
+				{status === 'banned' && (
+					<div>
+						<div style={{ color: '#d32f2f', marginBottom: '1rem' }}>{message}</div>
+						<div style={{ fontSize: '14px', color: '#666' }}>3 秒后自动跳转到首页</div>
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }
