@@ -601,43 +601,74 @@ function Dashboard({
 		return false;
 	});
 
-	// 为 gd 和 discover 模块自动添加 token
-	const getModuleUrl = (module: (typeof visibleModules)[0]): string => {
-		// 只对外部模块（gd 和 discover）添加 token
-		if (module.id === 'gd' || module.id === 'discover') {
-			const token = localStorage.getItem('jwt_token');
-			if (token) {
-				try {
-					const url = new URL(module.url);
-					url.searchParams.set('token', token);
-					return url.toString();
-				} catch (error) {
-					// 如果 URL 解析失败，返回原始 URL
-					console.warn(`[Dashboard] 无法解析模块 URL: ${module.url}`, error);
-					return module.url;
+	// 模块 URL 状态（用于存储生成的 access_token URL）
+	const [moduleUrls, setModuleUrls] = useState<Record<string, string>>({});
+
+	// 为需要 access_token 的模块生成 URL
+	useEffect(() => {
+		const generateUrls = async () => {
+			const urls: Record<string, string> = {};
+			for (const module of visibleModules) {
+				if (module.id === 'gd' || module.id === 'discover') {
+					const jwtToken = localStorage.getItem('jwt_token');
+					if (jwtToken) {
+						try {
+							// 调用 API 生成一次性 access_token
+							const response = await fetch(getApiUrl('/api/access/generate'), {
+								method: 'POST',
+								headers: {
+									'Content-Type': 'application/json',
+									Authorization: `Bearer ${jwtToken}`,
+								},
+								credentials: 'include',
+							});
+
+							if (response.ok) {
+								const data = await response.json();
+								if (data.accessToken) {
+									const url = new URL(module.url);
+									url.searchParams.set('token', data.accessToken);
+									urls[module.id] = url.toString();
+									console.log(`[Dashboard] 为模块 ${module.id} 生成 access_token`);
+									continue;
+								}
+							} else {
+								console.warn(`[Dashboard] 生成 access_token 失败: ${response.status}`);
+							}
+						} catch (error) {
+							console.error(`[Dashboard] 生成 access_token 失败:`, error);
+						}
+					}
 				}
+				// 如果生成失败或不需要 access_token，使用原始 URL
+				urls[module.id] = module.url;
 			}
-		}
-		return module.url;
-	};
+			setModuleUrls(urls);
+		};
+
+		generateUrls();
+	}, [visibleModules, user]);
 
 	return (
 		<div className="dashboard">
 			<h2 className="dashboard-title">功能工作台</h2>
 			<div className="modules-grid">
-				{visibleModules.map((module) => (
-					<a
-						key={module.id}
-						href={getModuleUrl(module)}
-						className="module-card"
-						target={module.external ? '_blank' : undefined}
-						rel={module.external ? 'noopener noreferrer' : undefined}
-					>
-						<div className="module-icon">{module.icon}</div>
-						<h3 className="module-title">{module.title}</h3>
-						<p className="module-description">{module.description}</p>
-					</a>
-				))}
+				{visibleModules.map((module) => {
+					const moduleUrl = moduleUrls[module.id] || module.url;
+					return (
+						<a
+							key={module.id}
+							href={moduleUrl}
+							className="module-card"
+							target={module.external ? '_blank' : undefined}
+							rel={module.external ? 'noopener noreferrer' : undefined}
+						>
+							<div className="module-icon">{module.icon}</div>
+							<h3 className="module-title">{module.title}</h3>
+							<p className="module-description">{module.description}</p>
+						</a>
+					);
+				})}
 			</div>
 		</div>
 	);
@@ -874,68 +905,105 @@ function GoogleCallbackHandler() {
  */
 function SSOHandler({ user }: { user: User | null }) {
 	useEffect(() => {
-		const url = new URL(window.location.href);
-		const redirectParam = url.searchParams.get('redirect');
+		const handleSSO = async () => {
+			const url = new URL(window.location.href);
+			const redirectParam = url.searchParams.get('redirect');
 
-		// 检查是否有 redirect 参数
-		if (!redirectParam) {
-			console.error('[SSO] 缺少 redirect 参数');
-			alert('缺少 redirect 参数');
-			window.location.href = '/';
-			return;
-		}
+			// 检查是否有 redirect 参数
+			if (!redirectParam) {
+				console.error('[SSO] 缺少 redirect 参数');
+				alert('缺少 redirect 参数');
+				window.location.href = '/';
+				return;
+			}
 
-		// 验证 redirect URL 是否来自允许的域名
-		let redirectUrl: URL;
-		try {
-			redirectUrl = new URL(redirectParam);
-		} catch (error) {
-			console.error('[SSO] redirect 参数格式无效');
-			alert('redirect 参数格式无效');
-			window.location.href = '/';
-			return;
-		}
+			// 验证 redirect URL 是否来自允许的域名
+			let redirectUrl: URL;
+			try {
+				redirectUrl = new URL(redirectParam);
+			} catch (error) {
+				console.error('[SSO] redirect 参数格式无效');
+				alert('redirect 参数格式无效');
+				window.location.href = '/';
+				return;
+			}
 
-		// 验证域名：必须是 *.scalarize.org 或 *.scalarize.cn
-		const isAllowedDomain =
-			redirectUrl.hostname.endsWith('.scalarize.org') ||
-			redirectUrl.hostname === 'scalarize.org' ||
-			redirectUrl.hostname.endsWith('.scalarize.cn') ||
-			redirectUrl.hostname === 'scalarize.cn';
+			// 验证域名：必须是 *.scalarize.org 或 *.scalarize.cn
+			const isAllowedDomain =
+				redirectUrl.hostname.endsWith('.scalarize.org') ||
+				redirectUrl.hostname === 'scalarize.org' ||
+				redirectUrl.hostname.endsWith('.scalarize.cn') ||
+				redirectUrl.hostname === 'scalarize.cn';
 
-		if (!isAllowedDomain) {
-			console.error(`[SSO] redirect URL 域名不允许: ${redirectUrl.hostname}`);
-			alert('redirect URL 域名不允许');
-			window.location.href = '/';
-			return;
-		}
+			if (!isAllowedDomain) {
+				console.error(`[SSO] redirect URL 域名不允许: ${redirectUrl.hostname}`);
+				alert('redirect URL 域名不允许');
+				window.location.href = '/';
+				return;
+			}
 
-		// 检查用户是否已登录
-		if (!user) {
-			console.log('[SSO] 用户未登录，重定向到登录页面');
-			// 未登录，重定向到登录页面（前端页面），并传递 redirect 参数
-			const loginUrl = new URL('/', window.location.origin);
-			loginUrl.searchParams.set('redirect', redirectParam);
-			window.location.href = loginUrl.toString();
-			return;
-		}
+			// 检查用户是否已登录
+			if (!user) {
+				console.log('[SSO] 用户未登录，重定向到登录页面');
+				// 未登录，重定向到登录页面（前端页面），并传递 redirect 参数
+				const loginUrl = new URL('/', window.location.origin);
+				loginUrl.searchParams.set('redirect', redirectParam);
+				window.location.href = loginUrl.toString();
+				return;
+			}
 
-		// 用户已登录，从 localStorage 获取 JWT token
-		const jwtToken = localStorage.getItem('jwt_token');
-		if (!jwtToken) {
-			console.warn('[SSO] 用户已登录但 localStorage 中没有 JWT token，重定向到登录页面');
-			// 没有 token，重定向到登录页面
-			const loginUrl = new URL('/', window.location.origin);
-			loginUrl.searchParams.set('redirect', redirectParam);
-			window.location.href = loginUrl.toString();
-			return;
-		}
+			// 用户已登录，生成一次性 access_token
+			const jwtToken = localStorage.getItem('jwt_token');
+			if (!jwtToken) {
+				console.warn('[SSO] 用户已登录但 localStorage 中没有 JWT token，重定向到登录页面');
+				// 没有 token，重定向到登录页面
+				const loginUrl = new URL('/', window.location.origin);
+				loginUrl.searchParams.set('redirect', redirectParam);
+				window.location.href = loginUrl.toString();
+				return;
+			}
 
-		// 将 JWT token 添加到 redirect URL 的参数中
-		redirectUrl.searchParams.set('token', jwtToken);
+			// 调用 API 生成一次性 access_token
+			try {
+				const response = await fetch(getApiUrl('/api/access/generate'), {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${jwtToken}`,
+					},
+					credentials: 'include',
+				});
 
-		console.log(`[SSO] 重定向到 ${redirectUrl.toString()}`);
-		window.location.href = redirectUrl.toString();
+				if (response.ok) {
+					const data = await response.json();
+					if (data.accessToken) {
+						// 将 access_token 添加到 redirect URL 的参数中
+						redirectUrl.searchParams.set('token', data.accessToken);
+						console.log('[SSO] 成功生成 access_token');
+					} else {
+						console.error('[SSO] API 响应中缺少 accessToken');
+						alert('生成 access_token 失败，请重试');
+						window.location.href = '/';
+						return;
+					}
+				} else {
+					console.error('[SSO] 生成 access_token 失败:', response.status);
+					alert('生成 access_token 失败，请重试');
+					window.location.href = '/';
+					return;
+				}
+			} catch (error) {
+				console.error('[SSO] 生成 access_token 失败:', error);
+				alert('生成 access_token 失败，请重试');
+				window.location.href = '/';
+				return;
+			}
+
+			console.log(`[SSO] 重定向到 ${redirectUrl.toString()}`);
+			window.location.href = redirectUrl.toString();
+		};
+
+		handleSSO();
 	}, [user]);
 
 	return (

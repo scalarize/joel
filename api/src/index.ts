@@ -35,7 +35,7 @@ import {
 	updateUserPassword,
 	inviteUser,
 } from './db/schema';
-import { updateUserLastLogoutKV, getUserLastLogoutKV } from './auth/session-kv';
+import { updateUserLastLogoutKV, getUserLastLogoutKV, generateAccessToken, exchangeAccessToken } from './auth/session-kv';
 import { loginTemplate, getDashboardTemplate } from './templates';
 import { checkAdminAccess, isAdminEmail } from './admin/auth';
 import { getCloudflareUsage } from './admin/analytics';
@@ -196,6 +196,16 @@ export default {
 				// 修改密码 API
 				if (path === '/api/profile/change-password' && request.method === 'POST') {
 					return handleApiChangePassword(request, env);
+				}
+
+				// Access Token 交换接口：用一次性 access_token 换取 JWT token
+				if (path === '/api/access' && request.method === 'GET') {
+					return handleApiAccess(request, env);
+				}
+
+				// 生成 Access Token 接口：生成一次性 access_token
+				if (path === '/api/access/generate' && request.method === 'POST') {
+					return handleApiGenerateAccessToken(request, env);
 				}
 
 				console.log(`[路由] API 路由未匹配，调用 handleApiNotFound`);
@@ -829,6 +839,131 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
 function handleApiPing(request: Request, env: Env): Response {
 	console.log('[API] /api/ping 请求');
 	return jsonWithCors(request, env, { message: 'pong' }, 200);
+}
+
+/**
+ * API: 用一次性 access_token 换取 JWT token
+ * 接收 Bearer access_token，验证后返回 JWT token
+ * access_token 使用后立即失效
+ */
+async function handleApiAccess(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/access 请求');
+
+	// 从 Authorization header 获取 access_token
+	const authHeader = request.headers.get('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		console.log('[API] /api/access 未找到 Authorization header');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '缺少 Authorization header',
+			},
+			401
+		);
+	}
+
+	const accessToken = authHeader.substring(7);
+	console.log('[API] /api/access 获取到 access_token');
+
+	// 从 KV 中交换 access_token 获取 JWT token
+	const jwtToken = await exchangeAccessToken(env.USER_SESSION, accessToken);
+
+	if (!jwtToken) {
+		console.log('[API] /api/access access_token 无效或已过期');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: 'access_token 无效或已过期',
+			},
+			401
+		);
+	}
+
+	console.log('[API] /api/access 成功交换 JWT token');
+	return jsonWithCors(
+		request,
+		env,
+		{
+			token: jwtToken,
+			message: '成功获取 JWT token',
+		},
+		200
+	);
+}
+
+/**
+ * API: 生成一次性 access_token
+ * 需要用户已登录（通过 JWT token 或 Cookie session）
+ */
+async function handleApiGenerateAccessToken(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/access/generate 请求');
+
+	// 尝试从 JWT token 获取用户信息
+	let jwtToken: string | null = null;
+	const authHeader = request.headers.get('Authorization');
+	if (authHeader && authHeader.startsWith('Bearer ')) {
+		jwtToken = authHeader.substring(7);
+	}
+
+	// 如果没有 JWT token，尝试从 Cookie session 获取
+	if (!jwtToken) {
+		const session = getSessionFromRequest(request);
+		if (session) {
+			// 从 session 生成 JWT token
+			const user = await getUserById(env.DB, session.userId);
+			if (user) {
+				jwtToken = await generateJWT(user.id, user.email, user.name, env);
+				console.log('[API] /api/access/generate 从 Cookie session 生成 JWT token');
+			}
+		}
+	}
+
+	// 如果仍然没有 JWT token，返回未授权
+	if (!jwtToken) {
+		console.log('[API] /api/access/generate 用户未登录');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '用户未登录',
+			},
+			401
+		);
+	}
+
+	// 验证 JWT token 是否有效
+	const payload = await verifyJWT(jwtToken, env, env.USER_SESSION);
+	if (!payload) {
+		console.log('[API] /api/access/generate JWT token 无效');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: 'JWT token 无效',
+			},
+			401
+		);
+	}
+
+	// 生成一次性 access_token
+	const accessToken = await generateAccessToken(env.USER_SESSION, jwtToken);
+	console.log('[API] /api/access/generate 成功生成 access_token');
+
+	return jsonWithCors(
+		request,
+		env,
+		{
+			accessToken,
+			message: '成功生成 access_token，有效期 30 秒',
+		},
+		200
+	);
 }
 
 /**
