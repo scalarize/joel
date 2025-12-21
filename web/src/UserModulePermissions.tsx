@@ -26,6 +26,21 @@ function getApiUrl(path: string): string {
 	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 	return `${baseUrl}${normalizedPath}`;
 }
+
+/**
+ * 获取带有 JWT token 的请求 headers
+ */
+function getAuthHeaders(): HeadersInit {
+	const headers: HeadersInit = {
+		'Content-Type': 'application/json',
+	};
+	const token = localStorage.getItem('jwt_token');
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
+	}
+	return headers;
+}
+
 import './Admin.css';
 
 interface UserModulePermissionsProps {
@@ -85,10 +100,7 @@ export default function UserModulePermissions({ userId, userName, userModules, o
 		try {
 			const response = await fetch(getApiUrl('/api/admin/user-modules'), {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				credentials: 'include',
+				headers: getAuthHeaders(),
 				body: JSON.stringify({
 					userId,
 					moduleId,
@@ -119,7 +131,7 @@ export default function UserModulePermissions({ userId, userName, userModules, o
 		try {
 			const response = await fetch(getApiUrl(`/api/admin/user-modules?userId=${userId}&moduleId=${moduleId}`), {
 				method: 'DELETE',
-				credentials: 'include',
+				headers: getAuthHeaders(),
 			});
 
 			const data = await response.json();

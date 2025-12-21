@@ -30,6 +30,20 @@ function getApiUrl(path: string): string {
 	return `${baseUrl}${normalizedPath}`;
 }
 
+/**
+ * 获取带有 JWT token 的请求 headers
+ */
+function getAuthHeaders(): HeadersInit {
+	const headers: HeadersInit = {
+		'Content-Type': 'application/json',
+	};
+	const token = localStorage.getItem('jwt_token');
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
+	}
+	return headers;
+}
+
 type AdminTab = 'dashboard' | 'users';
 
 export default function Admin() {
@@ -65,7 +79,7 @@ export default function Admin() {
 		const checkAuth = async () => {
 			try {
 				const response = await fetch(getApiUrl('/api/admin/analytics?startDate=2024-01-01&endDate=2024-01-02'), {
-					credentials: 'include',
+					headers: getAuthHeaders(),
 				});
 				if (response.status === 403) {
 					setUnauthorized(true);

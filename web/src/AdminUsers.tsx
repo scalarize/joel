@@ -26,6 +26,21 @@ function getApiUrl(path: string): string {
 	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 	return `${baseUrl}${normalizedPath}`;
 }
+
+/**
+ * 获取带有 JWT token 的请求 headers
+ */
+function getAuthHeaders(): HeadersInit {
+	const headers: HeadersInit = {
+		'Content-Type': 'application/json',
+	};
+	const token = localStorage.getItem('jwt_token');
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
+	}
+	return headers;
+}
+
 import UserModulePermissions from './UserModulePermissions';
 
 interface User {
@@ -67,7 +82,7 @@ export default function AdminUsers() {
 	const loadUserModules = async () => {
 		try {
 			const response = await fetch(getApiUrl('/api/admin/user-modules'), {
-				credentials: 'include',
+				headers: getAuthHeaders(),
 			});
 			if (response.ok) {
 				const data = await response.json();
@@ -86,8 +101,16 @@ export default function AdminUsers() {
 			setLoading(true);
 			setError(null);
 
+			const token = localStorage.getItem('jwt_token');
+			const headers: HeadersInit = {
+				'Content-Type': 'application/json',
+			};
+			if (token) {
+				headers['Authorization'] = `Bearer ${token}`;
+			}
+
 			const response = await fetch(getApiUrl('/api/admin/users'), {
-				credentials: 'include',
+				headers,
 			});
 
 			if (!response.ok) {
@@ -130,10 +153,7 @@ export default function AdminUsers() {
 		try {
 			const response = await fetch(getApiUrl('/api/admin/invite-user'), {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				credentials: 'include',
+				headers: getAuthHeaders(),
 				body: JSON.stringify({
 					email: inviteEmail.trim(),
 					name: inviteName.trim(),
@@ -202,10 +222,7 @@ export default function AdminUsers() {
 		try {
 			const response = await fetch(getApiUrl('/api/admin/reset-user-password'), {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				credentials: 'include',
+				headers: getAuthHeaders(),
 				body: JSON.stringify({
 					userId: resetPasswordUserId,
 					newPassword: resetPasswordNewPassword,
@@ -242,10 +259,7 @@ export default function AdminUsers() {
 		try {
 			const response = await fetch(getApiUrl('/api/admin/ban-user'), {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				credentials: 'include',
+				headers: getAuthHeaders(),
 				body: JSON.stringify({
 					userId,
 					banned,

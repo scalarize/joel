@@ -1489,8 +1489,8 @@ function handleApiOptions(request: Request, env: Env): Response {
 async function handleAdminAnalytics(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/admin/analytics 请求');
 
-	// 检查管理员权限
-	const admin = await checkAdminAccess(request, env.DB);
+	// 检查管理员权限（仅支持 JWT token）
+	const admin = await checkAdminAccess(request, env.DB, env);
 	if (!admin) {
 		console.log('[API] /api/admin/analytics 权限不足');
 		return jsonWithCors(
@@ -1551,8 +1551,8 @@ async function handleAdminAnalytics(request: Request, env: Env): Promise<Respons
 async function handleAdminUsers(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/admin/users 请求');
 
-	// 检查管理员权限
-	const admin = await checkAdminAccess(request, env.DB);
+	// 检查管理员权限（仅支持 JWT token）
+	const admin = await checkAdminAccess(request, env.DB, env);
 	if (!admin) {
 		console.log('[API] /api/admin/users 权限不足');
 		return jsonWithCors(
@@ -2098,8 +2098,8 @@ async function handlePasswordLogin(request: Request, env: Env): Promise<Response
 async function handleAdminInviteUser(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/admin/invite-user POST 请求');
 
-	// 检查管理员权限
-	const admin = await checkAdminAccess(request, env.DB);
+	// 检查管理员权限（仅支持 JWT token）
+	const admin = await checkAdminAccess(request, env.DB, env);
 	if (!admin) {
 		console.log('[API] /api/admin/invite-user 权限不足');
 		return jsonWithCors(
@@ -2361,8 +2361,8 @@ async function handleApiChangePassword(request: Request, env: Env): Promise<Resp
 async function handleAdminResetUserPassword(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/admin/reset-user-password POST 请求');
 
-	// 检查管理员权限
-	const admin = await checkAdminAccess(request, env.DB);
+	// 检查管理员权限（仅支持 JWT token）
+	const admin = await checkAdminAccess(request, env.DB, env);
 	if (!admin) {
 		console.log('[API] /api/admin/reset-user-password 权限不足');
 		return jsonWithCors(
@@ -2459,8 +2459,8 @@ async function handleAdminResetUserPassword(request: Request, env: Env): Promise
 async function handleAdminBanUser(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/admin/ban-user POST 请求');
 
-	// 检查管理员权限
-	const admin = await checkAdminAccess(request, env.DB);
+	// 检查管理员权限（仅支持 JWT token）
+	const admin = await checkAdminAccess(request, env.DB, env);
 	if (!admin) {
 		console.log('[API] /api/admin/ban-user 权限不足');
 		return jsonWithCors(
