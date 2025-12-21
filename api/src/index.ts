@@ -584,12 +584,14 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 		return new Response('Google OAuth 未配置', { status: 500 });
 	}
 
-	// 构建回调 URL - 使用前端路径（与授权时一致）
+	// 构建回调 URL - 必须与授权时使用的 redirect_uri 完全一致
+	// 注意：这里应该使用授权时传递给 Google 的 redirect_uri，而不是实际接收回调的 URL
 	const baseUrl = env.BASE_URL || new URL(request.url).origin;
 	// 获取前端 URL（如果是 API 域名，需要转换为前端域名）
 	const frontendUrl = env.FRONTEND_URL || baseUrl.replace('api.', '').replace('api-', '');
 	const redirectUri = `${frontendUrl}/auth/google/callback`;
-	console.log(`[Callback] 回调 URL: ${redirectUri}`);
+	console.log(`[Callback] 回调 URL（用于 token 交换）: ${redirectUri}`);
+	console.log(`[Callback] 实际请求 URL: ${request.url}`);
 
 	try {
 		// 交换授权码获取访问令牌

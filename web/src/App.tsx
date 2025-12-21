@@ -48,33 +48,39 @@ function App() {
 	const isCnHost = window.location.hostname === 'joel.scalarize.cn';
 
 	useEffect(() => {
-		const url = new URL(window.location.href);
+		const initializeAuth = async () => {
+			const url = new URL(window.location.href);
 
-		// 检查是否是退出后的重定向
-		const isLogout = url.searchParams.get('logout') === '1';
-		if (isLogout) {
-			console.log('[前端] 检测到退出后的重定向，清除 token 和用户状态');
-			// 立即清除 token 和用户状态
-			localStorage.removeItem('jwt_token');
-			setUser(null);
-			// 清除 URL 中的 logout 参数
-			url.searchParams.delete('logout');
-			window.history.replaceState({}, '', url.toString());
-			setLoading(false);
-			return;
-		}
+			// 检查是否是退出后的重定向
+			const isLogout = url.searchParams.get('logout') === '1';
+			if (isLogout) {
+				console.log('[前端] 检测到退出后的重定向，清除 token 和用户状态');
+				// 立即清除 token 和用户状态
+				localStorage.removeItem('jwt_token');
+				setUser(null);
+				// 清除 URL 中的 logout 参数
+				url.searchParams.delete('logout');
+				window.history.replaceState({}, '', url.toString());
+				setLoading(false);
+				return;
+			}
 
-		// 检查 URL 中是否有 token 参数（登录回调）
-		const token = url.searchParams.get('token');
-		if (token) {
-			console.log('[前端] 检测到 URL 中的 token，存储到 localStorage');
-			localStorage.setItem('jwt_token', token);
-			// 清除 URL 中的 token 参数
-			url.searchParams.delete('token');
-			window.history.replaceState({}, '', url.toString());
-		}
+			// 检查 URL 中是否有 token 参数（登录回调）
+			const token = url.searchParams.get('token');
+			if (token) {
+				console.log('[前端] 检测到 URL 中的 token，存储到 localStorage');
+				localStorage.setItem('jwt_token', token);
+				// 清除 URL 中的 token 参数
+				url.searchParams.delete('token');
+				window.history.replaceState({}, '', url.toString());
+				console.log('[前端] Token 已存储，准备验证登录状态');
+			}
 
-		checkAuth();
+			// 验证登录状态（会使用 localStorage 中的 token）
+			await checkAuth();
+		};
+
+		initializeAuth();
 	}, []);
 
 	// 检查登录成功后是否有 redirect 参数需要处理

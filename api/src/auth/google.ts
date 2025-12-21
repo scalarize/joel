@@ -24,11 +24,7 @@ export interface GoogleTokenResponse {
 /**
  * 生成 Google OAuth 授权 URL
  */
-export function generateAuthUrl(
-	clientId: string,
-	redirectUri: string,
-	state: string
-): string {
+export function generateAuthUrl(clientId: string, redirectUri: string, state: string): string {
 	const params = new URLSearchParams({
 		client_id: clientId,
 		redirect_uri: redirectUri,
@@ -62,24 +58,32 @@ export async function exchangeCodeForToken(
 	redirectUri: string
 ): Promise<GoogleTokenResponse> {
 	console.log(`[OAuth] 开始交换 token，code: ${code.substring(0, 8)}...`);
+	console.log(`[OAuth] 使用的 redirect_uri: ${redirectUri}`);
+	console.log(`[OAuth] 使用的 client_id: ${clientId.substring(0, 20)}...`);
+
+	const requestBody = new URLSearchParams({
+		code,
+		client_id: clientId,
+		client_secret: clientSecret,
+		redirect_uri: redirectUri,
+		grant_type: 'authorization_code',
+	});
+
+	console.log(`[OAuth] 请求参数: redirect_uri=${redirectUri}, client_id=${clientId.substring(0, 20)}...`);
 
 	const response = await fetch('https://oauth2.googleapis.com/token', {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded',
 		},
-		body: new URLSearchParams({
-			code,
-			client_id: clientId,
-			client_secret: clientSecret,
-			redirect_uri: redirectUri,
-			grant_type: 'authorization_code',
-		}),
+		body: requestBody,
 	});
 
 	if (!response.ok) {
 		const errorText = await response.text();
 		console.error(`[OAuth] Token 交换失败: ${response.status} ${errorText}`);
+		console.error(`[OAuth] 使用的 redirect_uri: ${redirectUri}`);
+		console.error(`[OAuth] 使用的 client_id: ${clientId.substring(0, 20)}...`);
 		throw new Error(`Token 交换失败: ${response.status}`);
 	}
 
@@ -91,19 +95,14 @@ export async function exchangeCodeForToken(
 /**
  * 使用访问令牌获取用户信息
  */
-export async function getUserInfo(
-	accessToken: string
-): Promise<GoogleUserInfo> {
+export async function getUserInfo(accessToken: string): Promise<GoogleUserInfo> {
 	console.log(`[OAuth] 开始获取用户信息`);
 
-	const response = await fetch(
-		'https://www.googleapis.com/oauth2/v2/userinfo',
-		{
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-			},
-		}
-	);
+	const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+		},
+	});
 
 	if (!response.ok) {
 		const errorText = await response.text();
@@ -120,4 +119,3 @@ export async function getUserInfo(
 
 	return userInfo;
 }
-
