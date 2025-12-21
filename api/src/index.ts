@@ -2052,17 +2052,6 @@ async function handlePasswordLogin(request: Request, env: Env): Promise<Response
 		console.log('[API] /api/auth/login 生成 JWT token');
 		const jwtToken = await generateJWT(user.id, user.email, user.name, env);
 
-		// 创建会话 Cookie
-		const isProduction = request.url.startsWith('https://');
-		const sessionCookie = setSessionCookie(
-			{
-				userId: user.id,
-				email: user.email,
-				name: user.name,
-			},
-			isProduction
-		);
-
 		console.log('[API] /api/auth/login 登录成功');
 
 		// 检查是否需要修改密码
@@ -2071,6 +2060,8 @@ async function handlePasswordLogin(request: Request, env: Env): Promise<Response
 			console.log('[API] /api/auth/login 用户需要修改密码');
 		}
 
+		// 返回 JSON 响应，包含 JWT token
+		// 不再设置 Cookie，只使用 JWT token
 		return jsonWithCors(
 			request,
 			env,
@@ -2085,10 +2076,7 @@ async function handlePasswordLogin(request: Request, env: Env): Promise<Response
 				token: jwtToken,
 				mustChangePassword: mustChangePassword, // 标记是否需要修改密码
 			},
-			200,
-			{
-				'Set-Cookie': sessionCookie,
-			}
+			200
 		);
 	} catch (error) {
 		console.error('[API] /api/auth/login 登录失败:', error);
