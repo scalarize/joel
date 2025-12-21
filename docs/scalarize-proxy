@@ -1,0 +1,176 @@
+# /etc/nginx/sites-available/scalarize-proxy
+
+# 代理 joel.scalarize.cn
+server {
+    server_name joel.scalarize.cn;
+
+    location / {
+        proxy_pass https://joel.scalarize.org;
+
+        # 传递必要的头部信息
+        proxy_set_header Host joel.scalarize.org;
+        proxy_set_header X-Forwarded-Host joel.scalarize.cn;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # 优化设置
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305;
+        proxy_ssl_server_name on;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/joel.scalarize.cn/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/joel.scalarize.cn/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+# 代理 api.joel.scalarize.cn
+server {
+    server_name api.joel.scalarize.cn;
+
+    location / {
+        proxy_pass https://api.joel.scalarize.org;
+
+        # 传递必要的头部信息
+        proxy_set_header Host api.joel.scalarize.org;
+        proxy_set_header X-Forwarded-Host api.joel.scalarize.cn;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # 优化设置
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305;
+        proxy_ssl_server_name on;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/api.joel.scalarize.cn/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/api.joel.scalarize.cn/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+# 代理 gd.scalarize.cn
+server {
+    server_name gd.scalarize.cn;
+
+    location / {
+        proxy_pass https://gd.scalarize.org;
+        proxy_set_header Host gd.scalarize.org;
+        proxy_set_header X-Forwarded-Host gd.scalarize.cn;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305;
+        proxy_ssl_server_name on;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/gd.scalarize.cn/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/gd.scalarize.cn/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+# 代理 bwdl.fun
+server {
+    server_name bwdl.fun;
+
+    location / {
+        proxy_pass https://bwdl.org;
+        proxy_set_header Host bwdl.org;
+        proxy_set_header X-Forwarded-Host bwdl.fun;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305;
+        proxy_ssl_server_name on;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/bwdl.fun/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/bwdl.fun/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+server {
+    if ($host = joel.scalarize.cn) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name joel.scalarize.cn;
+    return 404; # managed by Certbot
+
+
+}
+
+server {
+    if ($host = api.joel.scalarize.cn) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name api.joel.scalarize.cn;
+    return 404; # managed by Certbot
+
+
+}
+
+server {
+    if ($host = gd.scalarize.cn) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name gd.scalarize.cn;
+    return 404; # managed by Certbot
+
+
+}
+
+server {
+    if ($host = bwdl.fun) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name bwdl.fun;
+    return 404; # managed by Certbot
+
+}
