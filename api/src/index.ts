@@ -38,6 +38,7 @@ import {
 import { updateUserLastLogoutKV, getUserLastLogoutKV, generateAccessToken, exchangeAccessToken } from './auth/session-kv';
 import { loginTemplate, getDashboardTemplate } from './templates';
 import { checkAdminAccess, isAdminEmail } from './admin/auth';
+import { getUserFromRequest } from './auth/user';
 import { getCloudflareUsage } from './admin/analytics';
 
 interface Env {
@@ -1159,9 +1160,10 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
 async function handleApiGetProfile(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/profile GET 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		console.log('[API] /api/profile 用户未登录');
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/profile 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -1170,20 +1172,6 @@ async function handleApiGetProfile(request: Request, env: Env): Promise<Response
 				message: '需要登录',
 			},
 			401
-		);
-	}
-
-	const user = await getUserById(env.DB, session.userId);
-	if (!user) {
-		console.warn(`[API] /api/profile 数据库未找到用户: ${session.userId}`);
-		return jsonWithCors(
-			request,
-			env,
-			{
-				error: 'Not Found',
-				message: '用户不存在',
-			},
-			404
 		);
 	}
 
@@ -1207,9 +1195,10 @@ async function handleApiGetProfile(request: Request, env: Env): Promise<Response
 async function handleApiUpdateProfile(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/profile PUT 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		console.log('[API] /api/profile 用户未登录');
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/profile PUT 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -1301,8 +1290,8 @@ async function handleApiUpdateProfile(request: Request, env: Env): Promise<Respo
 			}
 		}
 
-		console.log(`[API] /api/profile 更新用户 Profile: ${session.userId}`);
-		const updatedUser = await updateUserProfile(env.DB, session.userId, {
+		console.log(`[API] /api/profile 更新用户 Profile: ${user.id}`);
+		const updatedUser = await updateUserProfile(env.DB, user.id, {
 			name: name !== undefined ? name.trim() : undefined,
 			picture: picture === '' ? null : picture,
 		});
@@ -1342,9 +1331,10 @@ async function handleApiUpdateProfile(request: Request, env: Env): Promise<Respo
 async function handleImageUpload(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/upload/image POST 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		console.log('[API] /api/upload/image 用户未登录');
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/upload/image 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -1404,7 +1394,7 @@ async function handleImageUpload(request: Request, env: Env): Promise<Response> 
 		const timestamp = Date.now();
 		const random = Math.random().toString(36).substring(2, 8);
 		const ext = file.name.split('.').pop() || 'jpg';
-		const fileName = `avatars/${session.userId}/${timestamp}-${random}.${ext}`;
+		const fileName = `avatars/${user.id}/${timestamp}-${random}.${ext}`;
 
 		console.log(`[API] /api/upload/image 上传文件: ${fileName}`);
 
@@ -1675,9 +1665,10 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 async function handleApiGetOAuthAccounts(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/profile/oauth-accounts GET 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		console.log('[API] /api/profile/oauth-accounts 用户未登录');
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/profile/oauth-accounts 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -1690,7 +1681,7 @@ async function handleApiGetOAuthAccounts(request: Request, env: Env): Promise<Re
 	}
 
 	try {
-		const accounts = await getOAuthAccountsByUserId(env.DB, session.userId);
+		const accounts = await getOAuthAccountsByUserId(env.DB, user.id);
 		console.log(`[API] /api/profile/oauth-accounts 返回 ${accounts.length} 个 OAuth 账号`);
 
 		// 只返回必要的字段，不返回敏感信息（access_token 等）
@@ -1724,9 +1715,10 @@ async function handleApiGetOAuthAccounts(request: Request, env: Env): Promise<Re
 async function handleApiLinkOAuth(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/profile/link-oauth POST 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		console.log('[API] /api/profile/link-oauth 用户未登录');
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/profile/link-oauth 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -1756,7 +1748,7 @@ async function handleApiLinkOAuth(request: Request, env: Env): Promise<Response>
 		}
 
 		// 检查该 OAuth 是否已关联
-		const existingAccounts = await getOAuthAccountsByUserId(env.DB, session.userId);
+		const existingAccounts = await getOAuthAccountsByUserId(env.DB, user.id);
 		const alreadyLinked = existingAccounts.some((acc) => acc.provider === provider);
 		if (alreadyLinked) {
 			return jsonWithCors(
@@ -1774,7 +1766,7 @@ async function handleApiLinkOAuth(request: Request, env: Env): Promise<Response>
 		// 注意：这里需要在 state 中编码当前用户 ID，以便回调时知道是手动关联
 		const baseUrl = env.BASE_URL || new URL(request.url).origin;
 		const state = generateState();
-		const linkState = `${state}|link|${session.userId}`; // 格式：{randomState}|link|{userId}
+		const linkState = `${state}|link|${user.id}`; // 格式：{randomState}|link|{userId}
 
 		const redirectUri = `${baseUrl}/api/auth/google/callback?link=true`;
 		const authUrl = generateGoogleAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, linkState);
@@ -1814,9 +1806,10 @@ async function handleApiLinkOAuth(request: Request, env: Env): Promise<Response>
 async function handleApiMergeAccounts(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/profile/merge-accounts POST 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		console.log('[API] /api/profile/merge-accounts 用户未登录');
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/profile/merge-accounts 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -1863,13 +1856,13 @@ async function handleApiMergeAccounts(request: Request, env: Env): Promise<Respo
 
 		// 将源用户的所有 OAuth 账号关联到当前用户
 		for (const oauthAccount of sourceOAuthAccounts) {
-			await updateOAuthAccountUserId(env.DB, oauthAccount.id, session.userId);
+			await updateOAuthAccountUserId(env.DB, oauthAccount.id, user.id);
 		}
 
 		// 删除源用户（由于外键 CASCADE，关联的 oauth_accounts 会自动删除）
 		await deleteUser(env.DB, source_user_id);
 
-		console.log(`[API] /api/profile/merge-accounts 账号合并成功: ${source_user_id} -> ${session.userId}`);
+		console.log(`[API] /api/profile/merge-accounts 账号合并成功: ${source_user_id} -> ${user.id}`);
 
 		return jsonWithCors(
 			request,
@@ -1900,9 +1893,10 @@ async function handleApiMergeAccounts(request: Request, env: Env): Promise<Respo
 async function handleApiUnlinkOAuth(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/profile/unlink-oauth POST 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		console.log('[API] /api/profile/unlink-oauth 用户未登录');
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/profile/unlink-oauth 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -1932,7 +1926,7 @@ async function handleApiUnlinkOAuth(request: Request, env: Env): Promise<Respons
 		}
 
 		// 解绑 OAuth 账号（函数内部会检查是否至少保留一个账号）
-		await unlinkOAuthAccount(env.DB, session.userId, provider);
+		await unlinkOAuthAccount(env.DB, user.id, provider);
 
 		console.log(`[API] /api/profile/unlink-oauth 解绑成功: ${provider}`);
 
@@ -2222,9 +2216,10 @@ async function handleAdminInviteUser(request: Request, env: Env): Promise<Respon
 async function handleApiChangePassword(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/profile/change-password POST 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		console.log('[API] /api/profile/change-password 用户未登录');
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/profile/change-password 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -2253,9 +2248,9 @@ async function handleApiChangePassword(request: Request, env: Env): Promise<Resp
 			);
 		}
 
-		// 获取用户信息
-		const user = await getUserById(env.DB, session.userId);
-		if (!user) {
+		// 从数据库获取完整用户信息（需要密码哈希）
+		const dbUser = await getUserById(env.DB, user.id);
+		if (!dbUser) {
 			return jsonWithCors(
 				request,
 				env,
@@ -2268,7 +2263,7 @@ async function handleApiChangePassword(request: Request, env: Env): Promise<Resp
 		}
 
 		// 检查用户是否有密码
-		if (!user.password_hash) {
+		if (!dbUser.password_hash) {
 			return jsonWithCors(
 				request,
 				env,
@@ -2282,7 +2277,7 @@ async function handleApiChangePassword(request: Request, env: Env): Promise<Resp
 
 		// 验证当前密码
 		console.log('[API] /api/profile/change-password 验证当前密码');
-		const isValid = await verifyPassword(currentPassword, user.password_hash);
+		const isValid = await verifyPassword(currentPassword, dbUser.password_hash);
 		if (!isValid) {
 			return jsonWithCors(
 				request,
@@ -2310,7 +2305,7 @@ async function handleApiChangePassword(request: Request, env: Env): Promise<Resp
 		}
 
 		// 检查新密码是否与当前密码相同
-		const isSamePassword = await verifyPassword(newPassword, user.password_hash);
+		const isSamePassword = await verifyPassword(newPassword, dbUser.password_hash);
 		if (isSamePassword) {
 			return jsonWithCors(
 				request,
@@ -2329,7 +2324,7 @@ async function handleApiChangePassword(request: Request, env: Env): Promise<Resp
 
 		// 更新密码（清除 must_change 标志）
 		console.log('[API] /api/profile/change-password 更新密码');
-		await updateUserPassword(env.DB, user.id, newPasswordHash, false);
+		await updateUserPassword(env.DB, dbUser.id, newPasswordHash, false);
 
 		console.log('[API] /api/profile/change-password 密码修改成功');
 		return jsonWithCors(
@@ -2505,9 +2500,9 @@ async function handleAdminBanUser(request: Request, env: Env): Promise<Response>
 			);
 		}
 
-		// 不能封禁自己
-		const session = getSessionFromRequest(request);
-		if (session && session.userId === userId && banned) {
+		// 不能封禁自己（从 JWT token 获取当前用户）
+		const currentUser = await getUserFromRequest(request, env.DB, env);
+		if (currentUser && currentUser.id === userId && banned) {
 			return jsonWithCors(
 				request,
 				env,
@@ -2561,8 +2556,10 @@ async function handleAdminBanUser(request: Request, env: Env): Promise<Response>
 async function handleApiGetUserModules(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/profile/modules 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/profile/modules 用户未登录或 JWT token 无效');
 		return jsonWithCors(
 			request,
 			env,
@@ -2574,8 +2571,9 @@ async function handleApiGetUserModules(request: Request, env: Env): Promise<Resp
 		);
 	}
 
-	const user = await getUserById(env.DB, session.userId);
-	if (!user) {
+	// 从数据库获取完整用户信息（需要检查模块权限）
+	const dbUser = await getUserById(env.DB, user.id);
+	if (!dbUser) {
 		return jsonWithCors(
 			request,
 			env,
@@ -2587,8 +2585,8 @@ async function handleApiGetUserModules(request: Request, env: Env): Promise<Resp
 		);
 	}
 
-	const isAdmin = isAdminEmail(user.email);
-	const permissions = await getUserModulePermissions(env.DB, user.id);
+	const isAdmin = isAdminEmail(dbUser.email);
+	const permissions = await getUserModulePermissions(env.DB, dbUser.id);
 
 	// 构建模块权限列表
 	const modules = ['profile', 'favor', 'gd', 'discover', 'admin'];
@@ -2615,21 +2613,10 @@ async function handleApiGetUserModules(request: Request, env: Env): Promise<Resp
 async function handleAdminGetUserModules(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/admin/user-modules GET 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		return jsonWithCors(
-			request,
-			env,
-			{
-				error: 'Unauthorized',
-				message: '需要登录',
-			},
-			401
-		);
-	}
-
-	const user = await getUserById(env.DB, session.userId);
-	if (!user || !isAdminEmail(user.email)) {
+	// 检查管理员权限（仅支持 JWT token）
+	const admin = await checkAdminAccess(request, env.DB, env);
+	if (!admin) {
+		console.log('[API] /api/admin/user-modules 权限不足');
 		return jsonWithCors(
 			request,
 			env,
@@ -2673,21 +2660,10 @@ async function handleAdminGetUserModules(request: Request, env: Env): Promise<Re
 async function handleAdminGrantModule(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/admin/user-modules POST 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		return jsonWithCors(
-			request,
-			env,
-			{
-				error: 'Unauthorized',
-				message: '需要登录',
-			},
-			401
-		);
-	}
-
-	const adminUser = await getUserById(env.DB, session.userId);
-	if (!adminUser || !isAdminEmail(adminUser.email)) {
+	// 检查管理员权限（仅支持 JWT token）
+	const admin = await checkAdminAccess(request, env.DB, env);
+	if (!admin) {
+		console.log('[API] /api/admin/user-modules POST 权限不足');
 		return jsonWithCors(
 			request,
 			env,
@@ -2774,21 +2750,10 @@ async function handleAdminGrantModule(request: Request, env: Env): Promise<Respo
 async function handleAdminRevokeModule(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/admin/user-modules DELETE 请求');
 
-	const session = getSessionFromRequest(request);
-	if (!session) {
-		return jsonWithCors(
-			request,
-			env,
-			{
-				error: 'Unauthorized',
-				message: '需要登录',
-			},
-			401
-		);
-	}
-
-	const adminUser = await getUserById(env.DB, session.userId);
-	if (!adminUser || !isAdminEmail(adminUser.email)) {
+	// 检查管理员权限（仅支持 JWT token）
+	const admin = await checkAdminAccess(request, env.DB, env);
+	if (!admin) {
+		console.log('[API] /api/admin/user-modules DELETE 权限不足');
 		return jsonWithCors(
 			request,
 			env,

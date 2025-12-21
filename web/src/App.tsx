@@ -146,8 +146,6 @@ function App() {
 			}
 
 			const apiUrl = getApiUrl('/api/me');
-			console.log('[前端] 调用 API:', apiUrl);
-			console.log('[前端] 请求 headers:', JSON.stringify(headers, null, 2));
 
 			const response = await fetch(apiUrl, {
 				credentials: 'include',
