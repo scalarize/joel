@@ -601,74 +601,74 @@ function Dashboard({
 		return false;
 	});
 
-	// 模块 URL 状态（用于存储生成的 access_token URL）
-	const [moduleUrls, setModuleUrls] = useState<Record<string, string>>({});
+	// 处理模块点击事件
+	const handleModuleClick = async (e: React.MouseEvent<HTMLAnchorElement>, module: (typeof visibleModules)[0]) => {
+		// 对于 gd 和 discover 模块，需要生成 access_token
+		if (module.id === 'gd' || module.id === 'discover') {
+			e.preventDefault();
 
-	// 为需要 access_token 的模块生成 URL
-	useEffect(() => {
-		const generateUrls = async () => {
-			const urls: Record<string, string> = {};
-			for (const module of visibleModules) {
-				if (module.id === 'gd' || module.id === 'discover') {
-					const jwtToken = localStorage.getItem('jwt_token');
-					if (jwtToken) {
-						try {
-							// 调用 API 生成一次性 access_token
-							const response = await fetch(getApiUrl('/api/access/generate'), {
-								method: 'POST',
-								headers: {
-									'Content-Type': 'application/json',
-									Authorization: `Bearer ${jwtToken}`,
-								},
-								credentials: 'include',
-							});
-
-							if (response.ok) {
-								const data = await response.json();
-								if (data.accessToken) {
-									const url = new URL(module.url);
-									url.searchParams.set('token', data.accessToken);
-									urls[module.id] = url.toString();
-									console.log(`[Dashboard] 为模块 ${module.id} 生成 access_token`);
-									continue;
-								}
-							} else {
-								console.warn(`[Dashboard] 生成 access_token 失败: ${response.status}`);
-							}
-						} catch (error) {
-							console.error(`[Dashboard] 生成 access_token 失败:`, error);
-						}
-					}
-				}
-				// 如果生成失败或不需要 access_token，使用原始 URL
-				urls[module.id] = module.url;
+			const jwtToken = localStorage.getItem('jwt_token');
+			if (!jwtToken) {
+				console.warn(`[Dashboard] 用户未登录，无法访问模块 ${module.id}`);
+				alert('请先登录');
+				return;
 			}
-			setModuleUrls(urls);
-		};
 
-		generateUrls();
-	}, [visibleModules, user]);
+			try {
+				console.log(`[Dashboard] 为模块 ${module.id} 生成 access_token`);
+				// 调用 API 生成一次性 access_token
+				const response = await fetch(getApiUrl('/api/access/generate'), {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${jwtToken}`,
+					},
+					credentials: 'include',
+				});
+
+				if (response.ok) {
+					const data = await response.json();
+					if (data.accessToken) {
+						// 构建带 access_token 的 URL
+						const url = new URL(module.url);
+						url.searchParams.set('token', data.accessToken);
+						console.log(`[Dashboard] 成功生成 access_token，跳转到 ${url.toString()}`);
+						// 跳转到带 access_token 的 URL
+						window.location.href = url.toString();
+					} else {
+						console.error(`[Dashboard] API 响应中缺少 accessToken`);
+						alert('生成 access_token 失败，请重试');
+					}
+				} else {
+					console.error(`[Dashboard] 生成 access_token 失败: ${response.status}`);
+					alert('生成 access_token 失败，请重试');
+				}
+			} catch (error) {
+				console.error(`[Dashboard] 生成 access_token 失败:`, error);
+				alert('生成 access_token 失败，请重试');
+			}
+		}
+		// 其他模块直接跳转，不阻止默认行为
+	};
 
 	return (
 		<div className="dashboard">
 			<h2 className="dashboard-title">功能工作台</h2>
 			<div className="modules-grid">
-				{visibleModules.map((module) => {
-					const moduleUrl = moduleUrls[module.id] || module.url;
-					return (
-						<a
-							key={module.id}
-							href={moduleUrl}
-							className="module-card"
-							target={module.external ? '_blank' : undefined}
-							rel={module.external ? 'noopener noreferrer' : undefined}
-						>
-							<div className="module-icon">{module.icon}</div>
-							<h3 className="module-title">{module.title}</h3>
-							<p className="module-description">{module.description}</p>
-						</a>
-					);
-				})}
+				{visibleModules.map((module) => (
+					<a
+						key={module.id}
+						href={module.url}
+						className="module-card"
+						target={module.external ? '_blank' : undefined}
+						rel={module.external ? 'noopener noreferrer' : undefined}
+						onClick={(e) => handleModuleClick(e, module)}
+					>
+						<div className="module-icon">{module.icon}</div>
+						<h3 className="module-title">{module.title}</h3>
+						<p className="module-description">{module.description}</p>
+					</a>
+				))}
 			</div>
 		</div>
 	);

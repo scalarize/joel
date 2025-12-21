@@ -90,9 +90,9 @@ export async function generateAccessToken(kv: KVNamespace, jwtToken: string): Pr
 
 	const key = getAccessTokenKey(accessToken);
 
-	// 存储到 KV，设置过期时间为 30 秒
+	// 存储到 KV，设置过期时间为 60 秒
 	await kv.put(key, jwtToken, {
-		expirationTtl: 30, // 30 秒
+		expirationTtl: 60, // 60 秒
 	});
 
 	console.log(`[AccessToken] 生成 access_token，30 秒后过期`);
