@@ -4,12 +4,12 @@
 	"private": true,
 	"scripts": {
 		"deploy": "npm run deploy:worker && npm run deploy:pages",
-		"dev": "cd api && wrangler dev",
-		"start": "cd api && wrangler dev",
+		"dev": "cd api && npx wrangler dev",
+		"start": "cd api && npx wrangler dev",
 		"test": "cd api && vitest",
-		"cf-typegen": "cd api && wrangler types",
-		"deploy:worker": "cd api && wrangler deploy",
-		"deploy:pages": "cd web && npm run build && wrangler pages deploy dist --project-name joel-pages"
+		"cf-typegen": "cd api && npx wrangler types",
+		"deploy:worker": "cd api && npx wrangler deploy",
+		"deploy:pages": "cd web && npm run build && npx wrangler pages deploy dist --project-name joel-pages"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
