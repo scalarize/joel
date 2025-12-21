@@ -66,16 +66,8 @@ export default function Profile() {
 			setLoading(true);
 			setError(null);
 
-			const token = localStorage.getItem('jwt_token');
-			const headers: HeadersInit = {
-				'Content-Type': 'application/json',
-			};
-			if (token) {
-				headers['Authorization'] = `Bearer ${token}`;
-			}
-
 			const response = await fetch(getApiUrl('/api/profile'), {
-				headers,
+				headers: getAuthHeaders(),
 			});
 
 			if (!response.ok) {
@@ -109,17 +101,9 @@ export default function Profile() {
 			setError(null);
 			setSuccess(false);
 
-			const token = localStorage.getItem('jwt_token');
-			const headers: HeadersInit = {
-				'Content-Type': 'application/json',
-			};
-			if (token) {
-				headers['Authorization'] = `Bearer ${token}`;
-			}
-
 			const response = await fetch(getApiUrl('/api/profile'), {
 				method: 'PUT',
-				headers,
+				headers: getAuthHeaders(),
 				body: JSON.stringify({
 					name: displayName.trim(),
 					picture: displayPicture.trim() || null,
