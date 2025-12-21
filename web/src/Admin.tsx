@@ -74,18 +74,26 @@ export default function Admin() {
 		};
 	}, []);
 
-	// 检查权限（通过尝试加载一个 API 来验证）
+	// 检查权限（通过尝试加载一个简单的 API 来验证，不依赖额外配置）
 	useEffect(() => {
 		const checkAuth = async () => {
 			try {
-				const response = await fetch(getApiUrl('/api/admin/analytics?startDate=2024-01-01&endDate=2024-01-02'), {
+				// 使用 /api/admin/users 进行权限检查，它不需要额外的环境变量配置
+				const response = await fetch(getApiUrl('/api/admin/users'), {
 					headers: getAuthHeaders(),
 				});
 				if (response.status === 403) {
+					console.log('[Admin] 权限检查失败：403 Forbidden');
 					setUnauthorized(true);
+				} else if (!response.ok) {
+					// 其他错误（如 500）不影响权限判断，可能是配置问题
+					console.warn(`[Admin] 权限检查 API 返回 ${response.status}，但不影响权限判断`);
+				} else {
+					console.log('[Admin] 权限检查通过');
 				}
 			} catch (error) {
 				console.error('[Admin] 权限检查失败:', error);
+				// 网络错误不影响权限判断，可能是临时问题
 			}
 		};
 		checkAuth();
