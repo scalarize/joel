@@ -110,8 +110,16 @@ function App() {
 
 	const loadModulePermissions = async () => {
 		try {
+			const token = localStorage.getItem('jwt_token');
+			const headers: HeadersInit = {
+				'Content-Type': 'application/json',
+			};
+			if (token) {
+				headers['Authorization'] = `Bearer ${token}`;
+			}
+
 			const response = await fetch(getApiUrl('/api/profile/modules'), {
-				credentials: 'include',
+				headers,
 			});
 			if (response.ok) {
 				const data = await response.json();

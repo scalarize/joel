@@ -24,6 +24,18 @@ function getApiUrl(path: string): string {
 	return `${baseUrl}${normalizedPath}`;
 }
 
+/**
+ * 获取带有 JWT token 的请求 headers（用于文件上传）
+ */
+function getAuthHeaders(): HeadersInit {
+	const headers: HeadersInit = {};
+	const token = localStorage.getItem('jwt_token');
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
+	}
+	return headers;
+}
+
 interface ImagePickerProps {
 	value: string;
 	onChange: (url: string) => void;
@@ -83,8 +95,8 @@ export default function ImagePicker({ value, onChange, label = '头像' }: Image
 
 			const response = await fetch(getApiUrl('/api/upload/image'), {
 				method: 'POST',
+				headers: getAuthHeaders(),
 				body: formData,
-				credentials: 'include',
 			});
 
 			if (!response.ok) {
