@@ -1,6 +1,6 @@
 /**
  * Cloudflare Analytics API 调用
- * 用于获取 D1、R2、Workers 的用量数据（按日期分组）
+ * 用于获取 D1、R2、Workers、KV 的用量数据（按日期分组）
  */
 
 // GraphQL 响应类型定义
@@ -38,6 +38,20 @@ interface CloudflareAnalyticsResponse {
 						subrequests?: number;
 					};
 				}>;
+				kvStorage?: Array<{
+					dimensions?: { date?: string };
+					max?: {
+						keyCount?: number;
+						byteCount?: number;
+					};
+				}>;
+				kvQuery?: Array<{
+					dimensions?: { date?: string };
+					sum?: {
+						requests?: number;
+						objectBytes?: number;
+					};
+				}>;
 			}>;
 		};
 	};
@@ -68,6 +82,12 @@ export interface UsageMetrics {
 	workers: {
 		requests: DateDataPoint[];
 		subrequests: DateDataPoint[];
+	};
+	kv: {
+		keyCount: DateDataPoint[];
+		byteCount: DateDataPoint[];
+		requests: DateDataPoint[];
+		objectBytes: DateDataPoint[];
 	};
 }
 
@@ -124,6 +144,26 @@ export async function getCloudflareUsage(accountId: string, apiToken: string, st
         sum {
           requests
           subrequests
+        }
+      }
+      kvStorage: kvStorageAdaptiveGroups(
+        filter: { date_geq: $startDate, date_leq: $endDate }
+        limit: 10000
+      ) {
+        dimensions { date }
+        max {
+          keyCount
+          byteCount
+        }
+      }
+      kvQuery: kvOperationsAdaptiveGroups(
+        filter: { date_geq: $startDate, date_leq: $endDate }
+        limit: 10000
+      ) {
+        dimensions { date }
+        sum {
+          requests
+          objectBytes
         }
       }
     }
@@ -220,6 +260,32 @@ export async function getCloudflareUsage(accountId: string, apiToken: string, st
 			}
 		}
 
+		// 处理 KV 存储数据
+		const kvStorage = account.kvStorage || [];
+		const kvKeyCount: DateDataPoint[] = [];
+		const kvByteCount: DateDataPoint[] = [];
+
+		for (const item of kvStorage) {
+			const date = item.dimensions?.date || '';
+			if (date) {
+				kvKeyCount.push({ date, value: item.max?.keyCount || 0 });
+				kvByteCount.push({ date, value: item.max?.byteCount || 0 });
+			}
+		}
+
+		// 处理 KV 操作数据
+		const kvQuery = account.kvQuery || [];
+		const kvRequests: DateDataPoint[] = [];
+		const kvObjectBytes: DateDataPoint[] = [];
+
+		for (const item of kvQuery) {
+			const date = item.dimensions?.date || '';
+			if (date) {
+				kvRequests.push({ date, value: item.sum?.requests || 0 });
+				kvObjectBytes.push({ date, value: item.sum?.objectBytes || 0 });
+			}
+		}
+
 		// 按日期排序
 		const sortByDate = (a: DateDataPoint, b: DateDataPoint) => a.date.localeCompare(b.date);
 		d1RowsRead.sort(sortByDate);
@@ -231,6 +297,10 @@ export async function getCloudflareUsage(accountId: string, apiToken: string, st
 		r2PayloadSize.sort(sortByDate);
 		workerRequests.sort(sortByDate);
 		workerSubrequests.sort(sortByDate);
+		kvKeyCount.sort(sortByDate);
+		kvByteCount.sort(sortByDate);
+		kvRequests.sort(sortByDate);
+		kvObjectBytes.sort(sortByDate);
 
 		const metrics: UsageMetrics = {
 			d1: {
@@ -247,6 +317,12 @@ export async function getCloudflareUsage(accountId: string, apiToken: string, st
 			workers: {
 				requests: workerRequests,
 				subrequests: workerSubrequests,
+			},
+			kv: {
+				keyCount: kvKeyCount,
+				byteCount: kvByteCount,
+				requests: kvRequests,
+				objectBytes: kvObjectBytes,
 			},
 		};
 
@@ -277,6 +353,12 @@ function getEmptyMetrics(): UsageMetrics {
 		workers: {
 			requests: [],
 			subrequests: [],
+		},
+		kv: {
+			keyCount: [],
+			byteCount: [],
+			requests: [],
+			objectBytes: [],
 		},
 	};
 }

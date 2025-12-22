@@ -2,7 +2,7 @@
 
 ## 概述
 
-Joel 项目的 Dashboard 仪表盘用于监控 Cloudflare 平台的资源使用情况，包括 D1 数据库、R2 对象存储和 Workers 计算资源的用量数据。通过可视化的方式展示各项指标的时间趋势，帮助管理员了解系统资源消耗情况，及时发现异常和优化机会。
+Joel 项目的 Dashboard 仪表盘用于监控 Cloudflare 平台的资源使用情况，包括 D1 数据库、R2 对象存储、Workers 计算资源和 KV 键值存储的用量数据。通过可视化的方式展示各项指标的时间趋势，帮助管理员了解系统资源消耗情况，及时发现异常和优化机会。
 
 ## 1. 监控项和仪表盘主要指标
 
@@ -46,6 +46,21 @@ Joel 项目的 Dashboard 仪表盘用于监控 Cloudflare 平台的资源使用�
 
 - 汇总统计：显示日期范围内的总请求数、总子请求数
 - 折线图：请求统计（请求数和子请求数的时间趋势对比）
+
+### 1.4 KV 存储监控
+
+**主要指标**：
+
+- **键数** (`keyCount`): 每日 KV 存储中的最大键数量
+- **存储容量** (`byteCount`): 每日 KV 存储的最大存储容量（字节）
+- **请求数** (`requests`): 每日 KV 存储的 API 请求总数
+- **对象流量** (`objectBytes`): 每日 KV 存储操作的总对象字节数
+
+**展示方式**：
+
+- 汇总统计：显示日期范围内的最大键数、最大存储容量、总请求数、总对象流量
+- 折线图 1：存储容量趋势（存储大小和键数的双 Y 轴对比图）
+- 折线图 2：请求统计（请求数和对象流量的双 Y 轴对比图）
 
 ## 2. 指标含义和监控思路
 
@@ -208,6 +223,76 @@ Joel 项目的 Dashboard 仪表盘用于监控 Cloudflare 平台的资源使用�
   - 如果子请求数过高，考虑批量操作、缓存机制、或优化业务逻辑
   - 监控子请求数与请求数的比例，评估 Workers 的效率和复杂度
 
+### 2.4 KV 存储指标
+
+#### 2.4.1 键数 (`keyCount`)
+
+**含义**：
+
+- 统计 KV 存储中的最大键数量（每日快照）
+- 反映 KV 存储的数据规模和键值对数量
+
+**监控思路**：
+
+- **正常情况**：键数应该随着业务增长而逐步增加，呈现相对稳定的增长趋势
+- **异常情况**：
+  - 突然激增：可能存在大量数据写入、数据迁移、或异常的数据生成逻辑
+  - 持续下降：可能表示数据清理、数据迁移、或存在数据丢失问题
+- **优化建议**：
+  - 如果键数过高，考虑数据清理策略、数据归档、或优化数据结构
+  - 监控键数与存储容量的关系，评估平均每个键值对的大小
+
+#### 2.4.2 存储容量 (`byteCount`)
+
+**含义**：
+
+- 统计 KV 存储的最大存储容量（字节，每日快照）
+- 反映 KV 存储的存储空间占用和成本
+
+**监控思路**：
+
+- **正常情况**：存储容量应该随着业务增长而逐步增加，呈现相对稳定的增长趋势
+- **异常情况**：
+  - 突然激增：可能存在大量大值写入、数据迁移、或异常的数据生成逻辑
+  - 持续高位：可能表示存储成本过高，需要优化数据大小或清理策略
+- **优化建议**：
+  - 如果存储容量过高，考虑数据压缩、清理策略、或归档策略
+  - 结合键数分析，评估平均每个键值对的大小（评估是否需要优化数据大小）
+
+#### 2.4.3 请求数 (`requests`)
+
+**含义**：
+
+- 统计所有 KV 存储 API 请求的总数（包括 GET、PUT、DELETE、LIST 等操作）
+- 反映 KV 存储的使用频率和访问模式
+
+**监控思路**：
+
+- **正常情况**：请求数应该与业务活跃度相关，呈现相对稳定的趋势
+- **异常情况**：
+  - 突然激增：可能存在大量数据读写、缓存失效、或遭受攻击
+  - 持续下降：可能表示业务量下降或存在访问阻塞问题
+- **优化建议**：
+  - 如果请求数过高，考虑使用缓存机制、批量操作优化、或限制访问频率
+  - 监控请求类型分布，评估是否需要优化存储策略
+
+#### 2.4.4 对象流量 (`objectBytes`)
+
+**含义**：
+
+- 统计所有 KV 存储操作的总对象字节数（包括读取和写入的数据）
+- 反映 KV 存储的数据传输量和带宽消耗
+
+**监控思路**：
+
+- **正常情况**：对象流量应该与数据访问频率和数据大小相关
+- **异常情况**：
+  - 突然激增：可能存在大量数据读写、大值访问、或缓存失效
+  - 持续高位：可能表示带宽成本过高，需要优化数据大小或使用缓存
+- **优化建议**：
+  - 如果对象流量过高，考虑使用缓存机制、数据压缩、或限制大值访问
+  - 结合请求数分析，评估平均每次请求的流量（评估数据大小是否合理）
+
 ## 3. 对应的整体 GraphQL 查询
 
 ### 3.1 GraphQL 查询结构
@@ -216,49 +301,60 @@ Joel 项目的 Dashboard 仪表盘用于监控 Cloudflare 平台的资源使用�
 query GetUsage($accountId: String!, $startDate: Date!, $endDate: Date!) {
 	viewer {
 		accounts(filter: { accountTag: $accountId }) {
-			# D1 数据库查询统计
 			d1Queries: d1QueriesAdaptiveGroups(filter: { date_geq: $startDate, date_leq: $endDate }, limit: 10000) {
 				dimensions {
 					date
 				}
 				sum {
-					rowsRead # 读取行数
-					rowsWritten # 写入行数
-					queryDurationMs # 查询耗时（毫秒）
+					rowsRead
+					rowsWritten
+					queryDurationMs
 				}
 			}
-
-			# R2 操作统计
 			r2Operation: r2OperationsAdaptiveGroups(filter: { date_geq: $startDate, date_leq: $endDate }, limit: 10000) {
 				dimensions {
 					date
 				}
 				sum {
-					requests # 请求数
-					responseBytes # 响应流量（字节）
+					requests
+					responseBytes
 				}
 			}
-
-			# R2 存储统计
 			r2Storage: r2StorageAdaptiveGroups(filter: { date_geq: $startDate, date_leq: $endDate }, limit: 10000) {
 				dimensions {
 					date
 				}
 				max {
-					objectCount # 对象数
-					uploadCount # 上传次数（未使用）
-					payloadSize # 存储容量（字节）
+					objectCount
+					uploadCount
+					payloadSize
 				}
 			}
-
-			# Workers 统计
 			worker: workersInvocationsAdaptive(filter: { date_geq: $startDate, date_leq: $endDate }, limit: 10000) {
 				dimensions {
 					date
 				}
 				sum {
-					requests # 请求数
-					subrequests # 子请求数
+					requests
+					subrequests
+				}
+			}
+			kvStorage: kvStorageAdaptiveGroups(filter: { date_geq: $startDate, date_leq: $endDate }, limit: 10000) {
+				dimensions {
+					date
+				}
+				max {
+					keyCount
+					byteCount
+				}
+			}
+			kvQuery: kvOperationsAdaptiveGroups(filter: { date_geq: $startDate, date_leq: $endDate }, limit: 10000) {
+				dimensions {
+					date
+				}
+				sum {
+					requests
+					objectBytes
 				}
 			}
 		}
@@ -351,6 +447,22 @@ interface CloudflareAnalyticsResponse {
 						subrequests?: number;
 					};
 				}>;
+				// KV 存储数据
+				kvStorage?: Array<{
+					dimensions?: { date?: string };
+					max?: {
+						keyCount?: number;
+						byteCount?: number;
+					};
+				}>;
+				// KV 操作数据
+				kvQuery?: Array<{
+					dimensions?: { date?: string };
+					sum?: {
+						requests?: number;
+						objectBytes?: number;
+					};
+				}>;
 			}>;
 		};
 	};
@@ -367,10 +479,15 @@ interface CloudflareAnalyticsResponse {
 - 使用 `sum` 聚合函数，按日期分组求和
 - 适用于累计型指标（如总行数、总请求数、总流量）
 
-**R2 存储**：
+**R2 存储和 KV 存储**：
 
 - 使用 `max` 聚合函数，按日期分组取最大值
-- 适用于快照型指标（如最大对象数、最大存储容量）
+- 适用于快照型指标（如最大对象数、最大存储容量、最大键数）
+
+**KV 操作**：
+
+- 使用 `sum` 聚合函数，按日期分组求和
+- 适用于累计型指标（如总请求数、总对象流量）
 
 **日期维度**：
 
@@ -448,6 +565,12 @@ interface CloudflareAnalyticsResponse {
 - 请求数突然增加 > 50%：可能存在流量激增或攻击
 - 子请求数与请求数比例 > 10：可能存在 N+1 查询或循环调用
 
+**KV 存储**：
+
+- 存储容量增长 > 1GB/天：可能存在异常的大值写入
+- 请求数突然增加 > 50%：可能存在大量数据读写或攻击
+- 对象流量突然增加 > 50%：可能存在大量数据访问或缓存失效
+
 ### 5.3 优化建议
 
 **D1 数据库**：
@@ -470,6 +593,13 @@ interface CloudflareAnalyticsResponse {
 - 使用批量操作减少 API 调用次数
 - 引入缓存机制减少重复请求
 - 实现限流策略防止流量激增
+
+**KV 存储**：
+
+- 使用缓存机制减少重复读取
+- 优化数据结构减少存储容量
+- 实现数据清理策略定期清理过期数据
+- 使用批量操作减少 API 调用次数
 
 ## 6. 参考资源
 

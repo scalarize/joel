@@ -49,6 +49,12 @@ interface UsageMetrics {
 		requests: DateDataPoint[];
 		subrequests: DateDataPoint[];
 	};
+	kv: {
+		keyCount: DateDataPoint[];
+		byteCount: DateDataPoint[];
+		requests: DateDataPoint[];
+		objectBytes: DateDataPoint[];
+	};
 }
 
 export default function AdminDashboard() {
@@ -311,6 +317,67 @@ export default function AdminDashboard() {
 									<Legend />
 									<Line type="monotone" dataKey="请求" stroke="#8884d8" dot={false} />
 									<Line type="monotone" dataKey="子请求" stroke="#82ca9d" dot={false} />
+								</LineChart>
+							</ResponsiveContainer>
+						</div>
+					</div>
+				</div>
+
+				{/* KV 存储 */}
+				<div className="admin-chart-section">
+					<h3>🗄️ KV 存储</h3>
+					<div className="admin-chart-summary">
+						<span>最大键数: {formatNumber(maxValue(metrics.kv.keyCount))}</span>
+						<span>最大存储: {formatBytes(maxValue(metrics.kv.byteCount))}</span>
+						<span>总请求数: {formatNumber(sumValues(metrics.kv.requests))}</span>
+						<span>总对象流量: {formatBytes(sumValues(metrics.kv.objectBytes))}</span>
+					</div>
+					<div className="admin-chart-grid">
+						<div className="admin-chart-card">
+							<h4>存储容量趋势</h4>
+							<ResponsiveContainer width="100%" height={250}>
+								<LineChart
+									data={metrics.kv.byteCount.map((item, index) => ({
+										date: item.date,
+										存储大小: item.value,
+										键数: metrics.kv.keyCount[index]?.value || 0,
+									}))}
+									margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
+									<YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+									<YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
+									<Tooltip
+										formatter={(value, name) => (name === '存储大小' ? formatBytes(Number(value) || 0) : formatNumber(Number(value) || 0))}
+									/>
+									<Legend />
+									<Line yAxisId="left" type="monotone" dataKey="存储大小" stroke="#82ca9d" dot={false} />
+									<Line yAxisId="right" type="monotone" dataKey="键数" stroke="#ff7300" dot={false} />
+								</LineChart>
+							</ResponsiveContainer>
+						</div>
+						<div className="admin-chart-card">
+							<h4>请求统计</h4>
+							<ResponsiveContainer width="100%" height={250}>
+								<LineChart
+									data={metrics.kv.requests.map((item, index) => ({
+										date: item.date,
+										请求数: item.value,
+										对象流量: metrics.kv.objectBytes[index]?.value || 0,
+									}))}
+									margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="date" tick={{ fontSize: 12 }} />
+									<YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+									<YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
+									<Tooltip
+										formatter={(value, name) => (name === '对象流量' ? formatBytes(Number(value) || 0) : formatNumber(Number(value) || 0))}
+									/>
+									<Legend />
+									<Line yAxisId="left" type="monotone" dataKey="请求数" stroke="#8884d8" dot={false} />
+									<Line yAxisId="right" type="monotone" dataKey="对象流量" stroke="#ffc658" dot={false} />
 								</LineChart>
 							</ResponsiveContainer>
 						</div>
