@@ -93,6 +93,11 @@ export default {
 				return handleJWKS(request, env);
 			}
 
+			// 用户头像 API（无需身份校验，但需要 CORS 控制）
+			if (path.startsWith('/user/avatar/') && request.method === 'GET') {
+				return handleUserAvatar(request, env);
+			}
+
 			// API 路由（预留给前后端分离的前端调用）
 			if (path.startsWith('/api/')) {
 				console.log(`[路由] 匹配到 API 路由: ${path}`);
@@ -1469,6 +1474,130 @@ function handleApiNotFound(request: Request, env: Env): Response {
 		},
 		404
 	);
+}
+
+/**
+ * 生成默认头像 SVG（显示用户名首字母）
+ */
+function generateDefaultAvatar(name: string): string {
+	// 获取首字母（大写），如果为空则使用 "?"
+	const initial = name && name.length > 0 ? name.charAt(0).toUpperCase() : '?';
+	
+	// 转义特殊字符（虽然首字母通常不会有问题，但为了安全）
+	const escapedInitial = initial
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+	
+	// 生成 SVG（圆形，紫色背景，白色文字）
+	// 尺寸：120x120，与 web 端的 avatar-preview-placeholder 保持一致
+	const svg = `<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg">
+	<circle cx="60" cy="60" r="60" fill="#667eea"/>
+	<text x="60" y="60" font-family="Arial, sans-serif" font-size="48" font-weight="600" fill="white" text-anchor="middle" dominant-baseline="central">${escapedInitial}</text>
+</svg>`;
+	
+	return svg;
+}
+
+/**
+ * 处理用户头像请求
+ * 端点: GET /user/avatar/<user_id>
+ * 无需身份校验，但需要 CORS 控制（只允许主站和子站引用）
+ */
+async function handleUserAvatar(request: Request, env: Env): Promise<Response> {
+	const url = new URL(request.url);
+	const pathParts = url.pathname.split('/');
+	const userId = pathParts[pathParts.length - 1];
+
+	console.log(`[Avatar] 请求用户头像: userId=${userId}`);
+
+	if (!userId) {
+		return new Response('Bad Request: Missing user_id', { status: 400 });
+	}
+
+	try {
+		// 从数据库获取用户信息
+		const user = await getUserById(env.DB, userId);
+		if (!user) {
+			console.log(`[Avatar] 用户不存在: ${userId}`);
+			return new Response('User not found', { status: 404 });
+		}
+
+		// 如果用户没有设置头像，生成默认头像（SVG）
+		if (!user.picture) {
+			console.log(`[Avatar] 用户未设置头像，生成默认头像: ${userId}`);
+			const defaultAvatar = generateDefaultAvatar(user.name);
+			
+			// 设置 CORS 头（只允许主站和子站域名）
+			const corsHeaders = getCorsHeaders(request, env);
+			corsHeaders.set('Content-Type', 'image/svg+xml');
+			corsHeaders.set('Cache-Control', 'public, max-age=86400'); // 默认头像缓存 1 天
+
+			return new Response(defaultAvatar, {
+				headers: corsHeaders,
+			});
+		}
+
+		const pictureUrl = user.picture;
+		console.log(`[Avatar] 用户头像 URL: ${pictureUrl}`);
+
+		// 检查是否是 R2 存储的头像（通过 R2_PUBLIC_URL 判断）
+		if (env.R2_PUBLIC_URL && pictureUrl.startsWith(env.R2_PUBLIC_URL)) {
+			// 从 R2 获取图片
+			const r2Path = pictureUrl.replace(env.R2_PUBLIC_URL + '/', '');
+			console.log(`[Avatar] 从 R2 获取: ${r2Path}`);
+
+			const object = await env.ASSETS.get(r2Path);
+			if (!object) {
+				console.log(`[Avatar] R2 文件不存在: ${r2Path}`);
+				return new Response('Avatar not found', { status: 404 });
+			}
+
+			// 获取 Content-Type
+			const contentType = object.httpMetadata?.contentType || 'image/jpeg';
+			const cacheControl = object.httpMetadata?.cacheControl || 'public, max-age=31536000';
+
+			// 设置 CORS 头（只允许主站和子站域名）
+			const corsHeaders = getCorsHeaders(request, env);
+			corsHeaders.set('Content-Type', contentType);
+			corsHeaders.set('Cache-Control', cacheControl);
+
+			return new Response(object.body, {
+				headers: corsHeaders,
+			});
+		} else {
+			// 外部 URL，代理返回图片内容
+			console.log(`[Avatar] 代理外部 URL: ${pictureUrl}`);
+			
+			try {
+				const imageResponse = await fetch(pictureUrl);
+				if (!imageResponse.ok) {
+					console.log(`[Avatar] 外部 URL 获取失败: ${imageResponse.status}`);
+					return new Response('Avatar not found', { status: 404 });
+				}
+
+				const imageData = await imageResponse.arrayBuffer();
+				const contentType = imageResponse.headers.get('Content-Type') || 'image/jpeg';
+
+				// 设置 CORS 头（只允许主站和子站域名）
+				const corsHeaders = getCorsHeaders(request, env);
+				corsHeaders.set('Content-Type', contentType);
+				corsHeaders.set('Cache-Control', 'public, max-age=3600'); // 外部 URL 缓存 1 小时
+
+				return new Response(imageData, {
+					headers: corsHeaders,
+				});
+			} catch (error) {
+				console.error('[Avatar] 代理外部 URL 失败:', error);
+				return new Response('Failed to fetch avatar', { status: 500 });
+			}
+		}
+	} catch (error) {
+		console.error('[Avatar] 获取用户头像失败:', error);
+		return new Response('Internal Server Error', { status: 500 });
+	}
 }
 
 /**
