@@ -106,18 +106,21 @@ interface JWTPayload {
 - [ ] 实现密钥轮换机制（支持多个密钥，通过 `kid` 标识）
 - [ ] 实现公钥 API (`/api/auth/public-key` 或 `/.well-known/jwks.json`)
 
-**阶段 2：JWT 签发改造**
+**阶段 2：JWT 签发改造** ✅ **已完成**
 
-- [ ] 修改 `api/src/auth/jwt.ts`：
-  - [ ] 将 `generateJWT` 从 HS256 改为 RS256
-  - [ ] 使用 RSA 私钥签名
-  - [ ] 在 Payload 中包含基础信息（userId, email, name）
-  - [ ] 可选：包含模块权限信息
-- [ ] 更新所有 JWT 签发点：
-  - [ ] `handlePasswordLogin`
-  - [ ] `handleGoogleCallback`
-  - [ ] `handleApiAccess` (access_token 兑换)
-  - [ ] `handleApiGenerateAccessToken` (SSO)
+- [x] 创建 `api/src/auth/jwt-rs256.ts`：
+  - [x] 实现 `generateJWT` 使用 RS256 算法
+  - [x] 使用 RSA 私钥签名
+  - [x] 在 Payload 中包含基础信息（userId, username, email）
+  - [x] 包含完整模块权限信息（profile, favor, gd, discover, admin）
+  - [x] 包含权限版本号（permVersion）
+- [x] 更新所有 JWT 签发点：
+  - [x] `handlePasswordLogin`
+  - [x] `handleGoogleCallback`
+  - [x] `handleApiAccess` (access_token 兑换)
+  - [x] `handleApiGenerateAccessToken` (SSO)
+- [x] 删除旧的 HS256 实现（`api/src/auth/jwt.ts`）
+- [x] 更新所有 JWT 验证点使用新的 RS256 实现
 
 **阶段 3：子站验证实现**
 
@@ -132,12 +135,13 @@ interface JWTPayload {
   - [ ] 仅在需要详细信息时调用
   - [ ] 仅在需要权限检查时调用
 
-**阶段 4：迁移与兼容**
+**阶段 4：迁移与兼容** ✅ **已完成（一次性迁移）**
 
-- [ ] 实现双模式支持（HS256 和 RS256 同时支持一段时间）
-- [ ] 逐步迁移子站到新验证方式
-- [ ] 监控和日志记录
-- [ ] 完全迁移后移除 HS256 支持
+- [x] 一次性迁移到 RS256（不保留 HS256 兼容）
+- [x] 删除旧的 HS256 实现和 JWT_SECRET 依赖
+- [x] 更新所有相关代码使用新的 RS256 实现
+- [ ] 子站实现 RS256 JWT 验证逻辑（待子站实现）
+- [ ] 监控和日志记录（持续进行）
 
 ##### 5. 技术细节
 

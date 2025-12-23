@@ -6,27 +6,26 @@
 
 以下环境变量**必须**配置，使用 Cloudflare Secrets 存储（敏感信息）：
 
-### 1. JWT_SECRET ⚠️ **新增，必须配置**
+### 1. JWT_RSA_PRIVATE_KEY ⚠️ **必须配置**
 
-用于 JWT token 的签名和验证。**生产环境必须配置，否则会使用不安全的默认值。**
+RSA 私钥（PEM 格式），用于 RS256 JWT token 的签名。**生产环境必须配置。**
 
 **生成方法：**
 ```bash
-# 方法1：使用 openssl 生成随机字符串（推荐）
-openssl rand -base64 32
-
-# 方法2：使用 Node.js
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-
-# 方法3：使用在线工具生成至少 32 字节的随机字符串
+# 在项目根目录执行
+cd .secrets
+openssl genrsa -out jwt_private_key.pem 2048
 ```
 
 **配置命令：**
 ```bash
 cd api
-wrangler secret put JWT_SECRET
-# 然后粘贴生成的随机字符串
+cat ../.secrets/jwt_private_key.pem | wrangler secret put JWT_RSA_PRIVATE_KEY
 ```
+
+**注意**：
+- 私钥必须包含 `-----BEGIN PRIVATE KEY-----` 和 `-----END PRIVATE KEY-----` 标记
+- 可以使用管道或重定向方式传递多行内容
 
 ### 2. GOOGLE_CLIENT_ID
 
@@ -109,6 +108,28 @@ Cloudflare 账户 ID，用于管理员功能。可以在 Cloudflare Dashboard �
 **配置方法：**
 - 在 Cloudflare Dashboard 中配置：Workers & Pages > joel-api > Settings > Variables
 
+### 9. PERM_VERSION（必须配置）
+
+权限版本号，用于控制 JWT 权限信息的有效性。权限变更时需要手动递增此值并重新部署。
+
+**初始值：**
+```
+1
+```
+
+**配置方法：**
+- 在 `wrangler.jsonc` 中配置（推荐）：
+  ```jsonc
+  "vars": {
+    "PERM_VERSION": "1"
+  }
+  ```
+- 或在 Cloudflare Dashboard 中配置：Workers & Pages > joel-api > Settings > Variables
+
+**注意**：
+- 权限变更后需要手动递增此值
+- 子站需要同步更新 `MIN_PERM_VERSION` 环境变量
+
 ## 配置步骤
 
 ### 方法1：使用 Wrangler CLI（推荐）
@@ -117,7 +138,7 @@ Cloudflare 账户 ID，用于管理员功能。可以在 Cloudflare Dashboard �
 cd ../joel/api
 
 # 配置必需 Secrets
-wrangler secret put JWT_SECRET
+cat ../.secrets/jwt_private_key.pem | wrangler secret put JWT_RSA_PRIVATE_KEY
 wrangler secret put GOOGLE_CLIENT_ID
 wrangler secret put GOOGLE_CLIENT_SECRET
 
@@ -143,14 +164,14 @@ cd ../joel/api
 wrangler tail
 ```
 
-如果看到 `[JWT] 使用默认 JWT_SECRET` 警告，说明 JWT_SECRET 未正确配置。
+如果看到 `JWT_RSA_PRIVATE_KEY 环境变量未设置` 错误，说明 RSA 私钥未正确配置。
 
 ## 注意事项
 
-1. **JWT_SECRET 安全性**：
-   - 必须使用强随机字符串（至少 32 字节）
-   - 不要使用默认值
-   - 不要将 Secret 提交到代码仓库
+1. **JWT_RSA_PRIVATE_KEY 安全性**：
+   - 私钥必须严格保密，仅存储在 Workers Secrets 中
+   - 不要将私钥提交到代码仓库
+   - 私钥文件应存储在 `.secrets/` 目录（已添加到 .gitignore）
 
 2. **环境变量优先级**：
    - Secrets（敏感信息）优先于 Vars

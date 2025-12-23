@@ -11,7 +11,7 @@ import {
 	getUserInfo as getGoogleUserInfo,
 } from './auth/google';
 import { setSessionCookie, getSessionFromRequest, clearSessionCookie } from './auth/session';
-import { generateJWT, verifyJWT, getJWTFromRequest } from './auth/jwt';
+import { generateJWT, verifyJWT, getJWTFromRequest } from './auth/jwt-rs256';
 import { hashPassword, verifyPassword, validatePasswordStrength, generateRandomPassword } from './auth/password';
 import {
 	User,
@@ -69,10 +69,15 @@ interface Env {
 	 */
 	CF_ACCOUNT_ID?: string;
 	/**
-	 * JWT Secret（用于生成和验证 JWT token）
-	 * 生产环境必须配置，建议使用随机字符串
+	 * RSA 私钥（PEM 格式，用于 RS256 JWT 签名）
+	 * 生产环境必须配置
 	 */
-	JWT_SECRET?: string;
+	JWT_RSA_PRIVATE_KEY?: string;
+	/**
+	 * 权限版本号（用于控制 JWT 权限信息的有效性）
+	 * 权限变更时需要手动递增此值并重新部署
+	 */
+	PERM_VERSION?: string;
 }
 
 export default {
@@ -83,6 +88,11 @@ export default {
 		console.log(`[请求] ${request.method} ${path}, URL: ${request.url}`);
 
 		try {
+			// 公钥 API（JWKS 格式）
+			if (path === '/.well-known/jwks.json' && request.method === 'GET') {
+				return handleJWKS(request, env);
+			}
+
 			// API 路由（预留给前后端分离的前端调用）
 			if (path.startsWith('/api/')) {
 				console.log(`[路由] 匹配到 API 路由: ${path}`);
@@ -402,7 +412,7 @@ async function handleAuth(request: Request, env: Env): Promise<Response> {
 
 	// 生成 JWT token
 	console.log(`[Auth] 为用户 ${user.email} 生成 JWT token`);
-	const jwtToken = await generateJWT(user.id, user.email, user.name, env);
+	const jwtToken = await generateJWT(user.id, user.email, user.name, env.DB, env);
 
 	// 将 JWT token 添加到 redirect URL 的参数中
 	redirectUrl.searchParams.set('token', jwtToken);
@@ -746,7 +756,7 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 
 		// 生成 JWT token
 		console.log(`[Callback] 生成 JWT token`);
-		const jwtToken = await generateJWT(user.id, user.email, user.name, env);
+		const jwtToken = await generateJWT(user.id, user.email, user.name, env.DB, env);
 		console.log(`[Callback] JWT token 生成成功`);
 
 		// 清除 state cookie
@@ -937,7 +947,7 @@ async function handleApiGenerateAccessToken(request: Request, env: Env): Promise
 			// 从 session 生成 JWT token
 			const user = await getUserById(env.DB, session.userId);
 			if (user) {
-				jwtToken = await generateJWT(user.id, user.email, user.name, env);
+				jwtToken = await generateJWT(user.id, user.email, user.name, env.DB, env);
 				console.log('[API] /api/access/generate 从 Cookie session 生成 JWT token');
 			}
 		}
@@ -1459,6 +1469,35 @@ function handleApiNotFound(request: Request, env: Env): Response {
 		},
 		404
 	);
+}
+
+/**
+ * API: 获取公钥（JWKS 格式）
+ * 端点: GET /.well-known/jwks.json
+ */
+function handleJWKS(request: Request, env: Env): Response {
+	console.log('[API] /.well-known/jwks.json 请求');
+
+	// JWKS 格式的公钥配置
+	const jwks = {
+		keys: [
+			{
+				kty: 'RSA',
+				use: 'sig',
+				kid: 'key-1',
+				alg: 'RS256',
+				n: 'yCbUWpPO6xJe6sok-4Pz8AT-em6rgjjPEPhw_khz37Zy_qY8FTm6ZriJGK-c0ZgeiA-TzVzYyJxPlk58FFLdrcqOgQF1iVz9X676wXpWk6yOYfWdptkIxleYEJYksOvYD_jab8G73T7Vvf6_d8prev31Z97zBOkO_Y4cYBr3VOHb9Un9BL9rGQ1KeD2LhEHoMUYdR4ZmDElvY_ZuS69sktqLNSakL1jXUDb_8Nfrropl6W0Ra920Nj_lGfYQ1rZs7pMwQIE1Zgh5YjE_-NXDBRI9M8OzBW5t8PHbhPephdcjvmvW9XsNErb9TbzKwMA9Bq6rxOPPKXX5SxINZtSBbw',
+				e: 'AQAB',
+			},
+		],
+	};
+
+	return new Response(JSON.stringify(jwks), {
+		headers: {
+			'Content-Type': 'application/json',
+			'Cache-Control': 'public, max-age=3600', // 缓存 1 小时
+		},
+	});
 }
 
 /**
@@ -2044,7 +2083,7 @@ async function handlePasswordLogin(request: Request, env: Env): Promise<Response
 
 		// 生成 JWT token
 		console.log('[API] /api/auth/login 生成 JWT token');
-		const jwtToken = await generateJWT(user.id, user.email, user.name, env);
+		const jwtToken = await generateJWT(user.id, user.email, user.name, env.DB, env);
 
 		console.log('[API] /api/auth/login 登录成功');
 
@@ -2720,6 +2759,14 @@ async function handleAdminGrantModule(request: Request, env: Env): Promise<Respo
 
 		await grantModulePermission(env.DB, userId, moduleId, adminUser.id);
 
+		// 提醒：需要手动更新 PERM_VERSION 环境变量并重新部署
+		const currentPermVersion = env.PERM_VERSION || '1';
+		const nextPermVersion = String(Number(currentPermVersion) + 1);
+		console.log(`[权限] 权限已变更，请更新 PERM_VERSION 环境变量`);
+		console.log(`[权限] 当前 PERM_VERSION: ${currentPermVersion}`);
+		console.log(`[权限] 建议更新为: ${nextPermVersion}`);
+		console.log(`[权限] 更新后需要重新部署主站，子站也需要更新 MIN_PERM_VERSION`);
+
 		console.log(`[API] /api/admin/user-modules 授予权限成功: ${userId} -> ${moduleId}`);
 		return jsonWithCors(
 			request,
@@ -2727,6 +2774,11 @@ async function handleAdminGrantModule(request: Request, env: Env): Promise<Respo
 			{
 				success: true,
 				message: '模块权限授予成功',
+				permVersionReminder: {
+					current: currentPermVersion,
+					recommended: nextPermVersion,
+					note: '请更新 PERM_VERSION 环境变量并重新部署',
+				},
 			},
 			200
 		);
@@ -2797,6 +2849,14 @@ async function handleAdminRevokeModule(request: Request, env: Env): Promise<Resp
 
 		await revokeModulePermission(env.DB, userId, moduleId);
 
+		// 提醒：需要手动更新 PERM_VERSION 环境变量并重新部署
+		const currentPermVersion = env.PERM_VERSION || '1';
+		const nextPermVersion = String(Number(currentPermVersion) + 1);
+		console.log(`[权限] 权限已变更，请更新 PERM_VERSION 环境变量`);
+		console.log(`[权限] 当前 PERM_VERSION: ${currentPermVersion}`);
+		console.log(`[权限] 建议更新为: ${nextPermVersion}`);
+		console.log(`[权限] 更新后需要重新部署主站，子站也需要更新 MIN_PERM_VERSION`);
+
 		console.log(`[API] /api/admin/user-modules 撤销权限成功: ${userId} -> ${moduleId}`);
 		return jsonWithCors(
 			request,
@@ -2804,6 +2864,11 @@ async function handleAdminRevokeModule(request: Request, env: Env): Promise<Resp
 			{
 				success: true,
 				message: '模块权限撤销成功',
+				permVersionReminder: {
+					current: currentPermVersion,
+					recommended: nextPermVersion,
+					note: '请更新 PERM_VERSION 环境变量并重新部署',
+				},
 			},
 			200
 		);

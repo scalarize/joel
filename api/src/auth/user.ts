@@ -3,7 +3,7 @@
  * 仅支持 JWT token 验证，不支持 Session Cookie
  */
 
-import { getJWTFromRequest, verifyJWT } from './jwt';
+import { getJWTFromRequest, verifyJWT } from './jwt-rs256';
 import { getUserById } from '../db/schema';
 
 /**
@@ -13,7 +13,7 @@ import { getUserById } from '../db/schema';
 export async function getUserFromRequest(
 	request: Request,
 	db: D1Database,
-	env: { JWT_SECRET?: string; USER_SESSION?: KVNamespace }
+	env: { JWT_RSA_PRIVATE_KEY?: string; USER_SESSION?: KVNamespace }
 ): Promise<{ id: string; email: string; name: string; picture?: string | null } | null> {
 	console.log('[用户验证] 检查 JWT token');
 

@@ -3,7 +3,7 @@
  * 仅支持 JWT token 验证，不支持 Session Cookie
  */
 
-import { getJWTFromRequest, verifyJWT } from '../auth/jwt';
+import { getJWTFromRequest, verifyJWT } from '../auth/jwt-rs256';
 import { getUserById } from '../db/schema';
 
 /**
@@ -34,7 +34,7 @@ export function isAdminEmail(email: string): boolean {
  * 仅支持 JWT token 验证
  * @returns 如果是管理员，返回用户对象；否则返回 null
  */
-export async function checkAdminAccess(request: Request, db: D1Database, env: { JWT_SECRET?: string; USER_SESSION?: KVNamespace }): Promise<{ id: string; email: string; name: string } | null> {
+export async function checkAdminAccess(request: Request, db: D1Database, env: { JWT_RSA_PRIVATE_KEY?: string; USER_SESSION?: KVNamespace }): Promise<{ id: string; email: string; name: string } | null> {
 	console.log('[管理员] 检查管理员权限');
 
 	// 从 JWT token 获取用户信息
