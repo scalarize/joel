@@ -198,8 +198,6 @@ export async function generateJWT(
 	const signatureInput = `${encodedHeader}.${encodedPayload}`;
 	const signatureInputBytes = new TextEncoder().encode(signatureInput);
 	
-	console.log(`[JWT] 签名输入长度: ${signatureInputBytes.length} 字节`);
-	
 	const signature = await crypto.subtle.sign(
 		{
 			name: 'RSASSA-PKCS1-v1_5',
@@ -208,13 +206,10 @@ export async function generateJWT(
 		signatureInputBytes
 	);
 
-	console.log(`[JWT] 签名长度: ${signature.byteLength} 字节`);
-	
 	const encodedSignature = base64UrlEncode(signature);
 
 	const token = `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
 	console.log(`[JWT] RS256 JWT token 生成成功，权限版本号: ${payload.permVersion}`);
-	console.log(`[JWT] Token 总长度: ${token.length} 字符`);
 	return token;
 }
 
@@ -247,10 +242,6 @@ async function getRSAPublicKeyFromJWKS(): Promise<CryptoKey> {
 	};
 
 	try {
-		console.log('[JWT] 开始导入公钥 (JWK 格式)');
-		console.log('[JWT] JWK modulus 长度:', jwk.n?.length || 0);
-		console.log('[JWT] JWK exponent:', jwk.e);
-		
 		const publicKey = await crypto.subtle.importKey(
 			'jwk',
 			jwk,
@@ -262,14 +253,9 @@ async function getRSAPublicKeyFromJWKS(): Promise<CryptoKey> {
 			['verify']
 		);
 		
-		console.log('[JWT] 公钥导入成功');
 		return publicKey;
 	} catch (error) {
 		console.error('[JWT] 导入公钥失败:', error);
-		if (error instanceof Error) {
-			console.error('[JWT] 错误详情:', error.message);
-			console.error('[JWT] 错误名称:', error.name);
-		}
 		throw new Error(`导入公钥失败: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
@@ -303,18 +289,10 @@ export async function verifyJWT(
 		// 验证签名（使用公钥）
 		// 注意：JWKS 中的公钥必须与 JWT_RSA_PRIVATE_KEY 环境变量中的私钥匹配
 		try {
-			console.log('[JWT] 开始验证签名');
 			const publicKey = await getRSAPublicKeyFromJWKS();
-			console.log('[JWT] 公钥导入成功');
-			
 			const signatureInput = `${encodedHeader}.${encodedPayload}`;
 			const signatureInputBytes = new TextEncoder().encode(signatureInput);
 			const signature = base64UrlDecode(encodedSignature);
-			
-			console.log('[JWT] signatureInput 长度:', signatureInput.length, '字符');
-			console.log('[JWT] signatureInputBytes 长度:', signatureInputBytes.length, '字节');
-			console.log('[JWT] 签名长度:', signature.byteLength, '字节');
-			console.log('[JWT] 签名前16字节 (hex):', Array.from(signature.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
 			const isValid = await crypto.subtle.verify(
 				{
@@ -327,21 +305,10 @@ export async function verifyJWT(
 
 			if (!isValid) {
 				console.error('[JWT] Token 签名验证失败');
-				console.error('[JWT] 可能的原因：');
-				console.error('[JWT] 1. JWKS 中的公钥与 JWT_RSA_PRIVATE_KEY 中的私钥不匹配');
-				console.error('[JWT] 2. 签名格式错误');
-				console.error('[JWT] 3. signatureInput 编码错误');
-				console.error('[JWT] 4. 签名在传输过程中被修改');
 				return null;
 			}
-			
-			console.log('[JWT] 签名验证成功');
 		} catch (error) {
 			console.error('[JWT] 签名验证过程出错:', error);
-			if (error instanceof Error) {
-				console.error('[JWT] 错误详情:', error.message);
-				console.error('[JWT] 错误堆栈:', error.stack);
-			}
 			return null;
 		}
 
