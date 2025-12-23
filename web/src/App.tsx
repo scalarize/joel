@@ -254,22 +254,26 @@ function App() {
 			} else {
 				console.warn('[前端] 登出 API 返回非成功状态:', response.status);
 			}
-
-			// 清除本地状态
-			setUser(null);
-			localStorage.removeItem('jwt_token');
-			console.log('[前端] 已清除本地状态');
-
-			// 跳转到首页
-			console.log('[前端] 跳转到首页');
-			window.location.href = '/';
 		} catch (error) {
-			console.error('[前端] 登出失败:', error);
-			// 即使 API 调用失败，也清除本地状态并跳转
-			setUser(null);
-			localStorage.removeItem('jwt_token');
-			window.location.href = '/';
+			console.error('[前端] 登出 API 调用失败:', error);
+			// API 调用失败不影响退出流程，继续清除本地状态
 		}
+
+		// 清除本地状态
+		setUser(null);
+		setModulePermissions(null);
+		localStorage.removeItem('jwt_token');
+		console.log('[前端] 已清除本地状态');
+
+		// 更新 URL 并刷新状态，避免重复重定向
+		const currentUrl = new URL(window.location.href);
+		currentUrl.pathname = '/';
+		currentUrl.search = ''; // 清除所有查询参数
+		window.history.replaceState({}, '', currentUrl.toString());
+
+		// 重新检查认证状态（会显示登录页面）
+		setLoading(true);
+		await checkAuth();
 	};
 
 	if (loading) {
