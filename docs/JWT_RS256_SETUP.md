@@ -393,17 +393,19 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
 ## 验证清单
 
-- [ ] 主站已添加 `JWT_RSA_PRIVATE_KEY` Secret
-- [ ] 主站已配置 `PERM_VERSION` 环境变量（初始值 "1"）
-- [ ] 主站公钥 API `/.well-known/jwks.json` 可访问
-- [ ] 子站已配置 `MIN_PERM_VERSION` 环境变量
-- [ ] 子站已配置 `JWT_PUBLIC_KEY_URL` 环境变量
-- [ ] 子站已实现 JWT 验证逻辑（RS256）
-- [ ] 子站已实现公钥获取和缓存逻辑
-- [ ] 子站已实现 `permVersion` 检查
-- [ ] 子站已实现用户头像获取（使用 `/user/avatar/<user_id>` API）
-- [ ] 测试：主站登录后，子站可以验证 JWT 并获取用户信息
-- [ ] 测试：子站可以正确显示用户头像（包括默认头像）
+- [x] 主站已添加 `JWT_RSA_PRIVATE_KEY` Secret
+- [x] 主站已配置 `PERM_VERSION` 环境变量（初始值 "1"）
+- [x] 主站公钥 API `/.well-known/jwks.json` 可访问
+- [x] 子站已配置 `MIN_PERM_VERSION` 环境变量
+- [x] 子站已配置 `JWT_PUBLIC_KEY_URL` 环境变量
+- [x] 子站已实现 JWT 验证逻辑（RS256）
+- [x] 子站已实现公钥获取和缓存逻辑
+- [x] 子站已实现 `permVersion` 检查
+- [x] 子站已实现用户头像获取（使用 `/user/avatar/<user_id>` API）
+- [x] 测试：主站登录后，子站可以验证 JWT 并获取用户信息
+- [x] 测试：子站可以正确显示用户头像（包括默认头像）
+
+**验证状态**：✅ 所有验证项已通过（2025-12-23）
 
 ## 故障排查
 
