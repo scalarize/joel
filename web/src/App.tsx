@@ -358,7 +358,7 @@ function Header({ user, onLogout }: { user: User | null; onLogout: () => void })
 			<div className="header-content">
 				<a href="/" className="logo">
 					<img src="/joel.png" alt="Joel" className="logo-icon" />
-					<h1>Joel 工作台</h1>
+					<h1>Joel center</h1>
 				</a>
 				<div className="user-section">
 					{user ? (
@@ -443,7 +443,7 @@ function LoginPrompt({ onLogin, isCnHost }: { onLogin: () => void; isCnHost: boo
 	return (
 		<div className="login-prompt">
 			<div className="login-card">
-				<h2>欢迎使用 Joel 工作台</h2>
+				<h2>welcome to Joel center</h2>
 				{!isCnHost && (
 					<div className="login-method-tabs">
 						<button
@@ -689,7 +689,7 @@ function Dashboard({
 
 	return (
 		<div className="dashboard">
-			<h2 className="dashboard-title">功能工作台</h2>
+			<h2 className="dashboard-title">modules</h2>
 			<div className="modules-grid">
 				{visibleModules.map((module) => (
 					<a
