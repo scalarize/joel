@@ -40,6 +40,7 @@ import { loginTemplate, getDashboardTemplate } from './templates';
 import { checkAdminAccess, isAdminEmail } from './admin/auth';
 import { getUserFromRequest } from './auth/user';
 import { getCloudflareUsage } from './admin/analytics';
+import { getAllModuleIds, isPermissionRequiredModule, getPermissionRequiredModuleIds } from './modules';
 
 interface Env {
 	DB: D1Database;
@@ -2756,8 +2757,8 @@ async function handleApiGetUserModules(request: Request, env: Env): Promise<Resp
 	const isAdmin = isAdminEmail(dbUser.email);
 	const permissions = await getUserModulePermissions(env.DB, dbUser.id);
 
-	// 构建模块权限列表
-	const modules = ['profile', 'favor', 'gd', 'discover', 'admin'];
+	// 构建模块权限列表（使用全局配置）
+	const modules = getAllModuleIds();
 	const modulePermissions: Record<string, boolean> = {};
 
 	for (const moduleId of modules) {
@@ -2859,14 +2860,14 @@ async function handleAdminGrantModule(request: Request, env: Env): Promise<Respo
 			);
 		}
 
-		// 验证模块 ID
-		if (!['favor', 'gd', 'discover'].includes(moduleId)) {
+		// 验证模块 ID（使用全局配置）
+		if (!isPermissionRequiredModule(moduleId)) {
 			return jsonWithCors(
 				request,
 				env,
 				{
 					error: 'Bad Request',
-					message: 'moduleId 必须是 favor、gd 或 discover',
+					message: `moduleId 必须是以下之一: ${getPermissionRequiredModuleIds().join('、')}`,
 				},
 				400
 			);
@@ -2886,7 +2887,7 @@ async function handleAdminGrantModule(request: Request, env: Env): Promise<Respo
 			);
 		}
 
-		await grantModulePermission(env.DB, userId, moduleId, adminUser.id);
+		await grantModulePermission(env.DB, userId, moduleId, admin.id);
 
 		// 提醒：需要手动更新 PERM_VERSION 环境变量并重新部署
 		const currentPermVersion = env.PERM_VERSION || '1';
@@ -2963,14 +2964,14 @@ async function handleAdminRevokeModule(request: Request, env: Env): Promise<Resp
 			);
 		}
 
-		// 验证模块 ID
-		if (!['favor', 'gd', 'discover'].includes(moduleId)) {
+		// 验证模块 ID（使用全局配置）
+		if (!isPermissionRequiredModule(moduleId)) {
 			return jsonWithCors(
 				request,
 				env,
 				{
 					error: 'Bad Request',
-					message: 'moduleId 必须是 favor、gd 或 discover',
+					message: `moduleId 必须是以下之一: ${getPermissionRequiredModuleIds().join('、')}`,
 				},
 				400
 			);

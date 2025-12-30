@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import './App.css';
 import Profile from './Profile';
 import Admin from './Admin';
+import MiniGames from './MiniGames';
+import { MODULES } from './modules';
 
 /**
  * 获取 API 基础 URL
@@ -325,6 +327,12 @@ function App() {
 					) : (
 						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
+				) : path === '/mini-games' ? (
+					user ? (
+						<MiniGames />
+					) : (
+						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
+					)
 				) : path === '/admin' || path === '/admin/dashboard' || path === '/admin/users' ? (
 					user ? (
 						<Admin />
@@ -566,48 +574,7 @@ function Dashboard({
 	isCnHost: boolean;
 	modulePermissions: Record<string, boolean> | null;
 }) {
-	const modules = [
-		{
-			id: 'profile',
-			title: '个人资料',
-			description: '管理显示名称和头像',
-			url: '/profile',
-			icon: '👤',
-			external: false,
-		},
-		{
-			id: 'favor',
-			title: '书签收藏',
-			description: '收藏和管理常用链接',
-			url: '/favor',
-			icon: '🔖',
-			external: false,
-		},
-		{
-			id: 'gd',
-			title: 'GD 开发',
-			description: 'GD 相关开发工具和资源',
-			url: 'http://gd.scalarize.org/',
-			icon: '⚙️',
-			external: false,
-		},
-		{
-			id: 'discover',
-			title: 'Discover',
-			description: 'Discover 相关工具和资源',
-			url: 'http://discover.scalarize.org/',
-			icon: '🔍',
-			external: false,
-		},
-		{
-			id: 'admin',
-			title: '系统管理',
-			description: '系统配置和管理入口',
-			url: '/admin',
-			icon: '⚙️',
-			external: false,
-		},
-	].map((module) => ({
+	const modules = MODULES.map((module) => ({
 		...module,
 		url: replaceDomainInUrl(module.url, isCnHost),
 	}));
@@ -629,7 +596,7 @@ function Dashboard({
 			return false; // 非管理员不能访问
 		}
 
-		// favor、gd 和 discover 需要检查授权
+		// favor、gd、discover 和 mini-games 需要检查授权
 		if (modulePermissions && modulePermissions[module.id] === true) {
 			return true;
 		}

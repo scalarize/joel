@@ -42,6 +42,7 @@ function getAuthHeaders(): HeadersInit {
 }
 
 import './Admin.css';
+import { getPermissionRequiredModuleIds } from './modules';
 
 interface UserModulePermissionsProps {
 	userId: string;
@@ -152,8 +153,8 @@ export default function UserModulePermissions({ userId, userName, userModules, o
 		}
 	};
 
-	// 模块配置
-	const modules = ['favor', 'gd', 'discover'];
+	// 模块配置（使用全局配置）
+	const modules = getPermissionRequiredModuleIds();
 
 	return (
 		<div className="admin-user-modules">

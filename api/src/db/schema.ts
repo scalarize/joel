@@ -630,8 +630,9 @@ export async function hasModulePermission(db: D1Database, userId: string, module
 		return false; // 非管理员不能访问
 	}
 
-	// favor、gd 和 discover 需要检查授权
-	if (moduleId === 'favor' || moduleId === 'gd' || moduleId === 'discover') {
+	// 需要权限授权的模块需要检查授权（使用全局配置）
+	const { isPermissionRequiredModule } = await import('../modules');
+	if (isPermissionRequiredModule(moduleId)) {
 		const result = await db
 			.prepare('SELECT 1 FROM user_module_permissions WHERE user_id = ? AND module_id = ?')
 			.bind(userId, moduleId)
