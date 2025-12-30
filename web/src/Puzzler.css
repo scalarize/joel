@@ -1,0 +1,226 @@
+/**
+ * 拼图游戏 Puzzler 样式
+ */
+
+.puzzler {
+	width: 100%;
+	max-width: 1400px;
+	margin: 0 auto;
+	padding: 24px;
+}
+
+.puzzler-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 2px solid #e0e0e0;
+}
+
+.puzzler-header h2 {
+	margin: 0;
+	font-size: 28px;
+	font-weight: 600;
+	color: #333;
+}
+
+.puzzler-controls {
+	display: flex;
+	gap: 12px;
+}
+
+.puzzler-btn {
+	padding: 10px 20px;
+	border: none;
+	border-radius: 8px;
+	font-size: 16px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.puzzler-btn-primary {
+	background: #667eea;
+	color: white;
+}
+
+.puzzler-btn-primary:hover:not(:disabled) {
+	background: #5568d3;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.puzzler-btn-secondary {
+	background: #f5f5f5;
+	color: #333;
+	border: 1px solid #ddd;
+}
+
+.puzzler-btn-secondary:hover:not(:disabled) {
+	background: #e8e8e8;
+}
+
+.puzzler-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.puzzler-win-message {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 1000;
+	animation: fadeIn 0.3s;
+}
+
+.puzzler-win-content {
+	background: white;
+	padding: 48px;
+	border-radius: 16px;
+	text-align: center;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+	animation: slideUp 0.3s;
+}
+
+.puzzler-win-content h3 {
+	margin: 0 0 24px 0;
+	font-size: 32px;
+	color: #333;
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes slideUp {
+	from {
+		transform: translateY(20px);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+.puzzler-container {
+	width: 100%;
+	display: flex;
+	justify-content: center;
+}
+
+.puzzler-area {
+	display: grid;
+	gap: 2px;
+	background: #333;
+	padding: 2px;
+	border-radius: 8px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+	width: 100%;
+	max-width: 900px;
+	/* aspect-ratio 会根据难度动态设置 */
+}
+
+/* 难度对应的网格列数和比例 */
+.puzzler-area[data-difficulty='easy'] {
+	grid-template-columns: repeat(6, 1fr);
+	grid-template-rows: repeat(5, 1fr);
+	aspect-ratio: 6 / 5; /* 关键：锁定容器整体比例为 6:5 */
+}
+
+.puzzler-area[data-difficulty='medium'] {
+	grid-template-columns: repeat(8, 1fr);
+	grid-template-rows: repeat(6, 1fr);
+	aspect-ratio: 8 / 6; /* 4:3 */
+}
+
+.puzzler-area[data-difficulty='hard'] {
+	grid-template-columns: repeat(10, 1fr);
+	grid-template-rows: repeat(9, 1fr);
+	aspect-ratio: 10 / 9;
+}
+
+.puzzler-piece {
+	/* 外层容器：负责网格定位，受 gap 影响 */
+	position: relative;
+	overflow: hidden; /* 关键：隐藏超出部分，制造"窗口"效果 */
+	border-radius: 4px;
+	cursor: move;
+	user-select: none;
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.puzzler-piece-inner {
+	/* 内层容器：负责背景展示，尺寸是相对于父容器的百分比，不受 gap 影响 */
+	position: absolute;
+	top: 0;
+	left: 0;
+	/* width 和 height 通过内联样式设置，为 cols * 100% x rows * 100% */
+	background-size: 100% 100%; /* 背景图填满这个放大后的元素 */
+	background-repeat: no-repeat;
+	/* background-position 通过内联样式精确控制 */
+}
+
+.puzzler-piece:hover {
+	transform: scale(1.02);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	z-index: 10;
+}
+
+.puzzler-piece-dragging {
+	opacity: 0.7;
+	transform: scale(1.05);
+	z-index: 100;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.puzzler-piece-merged-badge {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	background: rgba(102, 126, 234, 0.9);
+	color: white;
+	border-radius: 12px;
+	padding: 2px 8px;
+	font-size: 12px;
+	font-weight: 600;
+	pointer-events: none;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+	.puzzler {
+		padding: 16px;
+	}
+
+	.puzzler-header {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 16px;
+	}
+
+	.puzzler-controls {
+		width: 100%;
+		justify-content: space-between;
+	}
+
+	.puzzler-btn {
+		flex: 1;
+	}
+
+	.puzzler-area {
+		max-width: 100%;
+	}
+}

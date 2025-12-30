@@ -3,6 +3,7 @@ import './App.css';
 import Profile from './Profile';
 import Admin from './Admin';
 import MiniGames from './MiniGames';
+import Puzzler from './Puzzler';
 import { MODULES } from './modules';
 
 /**
@@ -330,6 +331,12 @@ function App() {
 				) : path === '/mini-games' ? (
 					user ? (
 						<MiniGames />
+					) : (
+						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
+					)
+				) : path === '/mini-games/puzzler' ? (
+					user ? (
+						<Puzzler />
 					) : (
 						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
