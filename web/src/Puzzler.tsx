@@ -265,8 +265,16 @@ export default function Puzzler() {
 			</div>
 
 			{gameWon && (
-				<div className="puzzler-win-message">
-					<div className="puzzler-win-content">
+				<div
+					className="puzzler-win-message"
+					onClick={(e) => {
+						// 点击弹窗外部区域关闭弹窗
+						if (e.target === e.currentTarget) {
+							setGameWon(false);
+						}
+					}}
+				>
+					<div className="puzzler-win-content" onClick={(e) => e.stopPropagation()}>
 						<h3>🎉 恭喜完成拼图！</h3>
 						<button onClick={initNewGame} className="puzzler-btn puzzler-btn-primary">
 							再来一局
@@ -303,6 +311,37 @@ export default function Puzzler() {
 							gridColumn: piece.position.col + 1,
 						};
 
+						// 检查相邻图块是否与当前图块的相对位置符合原始相对关系
+						const checkAdjacentGrouped = (direction: 'top' | 'right' | 'bottom' | 'left'): boolean => {
+							let adjacentRow = piece.position.row;
+							let adjacentCol = piece.position.col;
+
+							if (direction === 'top') adjacentRow--;
+							else if (direction === 'bottom') adjacentRow++;
+							else if (direction === 'left') adjacentCol--;
+							else if (direction === 'right') adjacentCol++;
+
+							const adjacentPiece = pieces.find((p) => p.position.row === adjacentRow && p.position.col === adjacentCol);
+
+							if (!adjacentPiece) return false;
+
+							// 检查当前位置的相对关系
+							const currentRowDiff = piece.position.row - adjacentPiece.position.row;
+							const currentColDiff = piece.position.col - adjacentPiece.position.col;
+
+							// 检查原始位置的相对关系
+							const originalRowDiff = piece.originalPosition.row - adjacentPiece.originalPosition.row;
+							const originalColDiff = piece.originalPosition.col - adjacentPiece.originalPosition.col;
+
+							// 如果当前位置的相对关系与原始位置的相对关系一致，则标记为 grouped
+							return currentRowDiff === originalRowDiff && currentColDiff === originalColDiff;
+						};
+
+						const isGroupedTop = checkAdjacentGrouped('top');
+						const isGroupedRight = checkAdjacentGrouped('right');
+						const isGroupedBottom = checkAdjacentGrouped('bottom');
+						const isGroupedLeft = checkAdjacentGrouped('left');
+
 						const innerStyle: React.CSSProperties = {
 							width: '100%',
 							height: '100%',
@@ -311,6 +350,12 @@ export default function Puzzler() {
 							backgroundPosition: `${bgPosX}% ${bgPosY}%`,
 							backgroundRepeat: 'no-repeat',
 						};
+
+						// 通过负 margin 来移除 grouped 图块之间的 gap
+						if (isGroupedTop) tileStyle.marginTop = '-2px';
+						if (isGroupedRight) tileStyle.marginRight = '-2px';
+						if (isGroupedBottom) tileStyle.marginBottom = '-2px';
+						if (isGroupedLeft) tileStyle.marginLeft = '-2px';
 
 						return (
 							<div
