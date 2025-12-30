@@ -167,3 +167,6 @@ dist
 .env*
 !.env.example
 .wrangler/
+
+# 临时文件
+temp-images/
