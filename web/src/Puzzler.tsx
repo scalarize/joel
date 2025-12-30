@@ -66,6 +66,7 @@ export default function Puzzler() {
 	const [gameStarted, setGameStarted] = useState(false);
 	const [gameWon, setGameWon] = useState(false);
 	const [draggingPiece, setDraggingPiece] = useState<number | null>(null);
+	const [hoveredPiece, setHoveredPiece] = useState<number | null>(null);
 	const puzzleAreaRef = useRef<HTMLDivElement>(null);
 
 	/**
@@ -154,6 +155,54 @@ export default function Puzzler() {
 
 		setPieces(shuffled);
 	}, [difficulty, gameStarted]);
+
+	/**
+	 * 获取图块所属的 group（所有相邻且 grouped 的图块）
+	 */
+	const getGroupedPieces = useCallback(
+		(pieceId: number): number[] => {
+			const piece = pieces.find((p) => p.id === pieceId);
+			if (!piece) return [pieceId];
+
+			const group: number[] = [pieceId];
+			const visited = new Set<number>([pieceId]);
+
+			const addAdjacentGrouped = (p: Piece) => {
+				// 检查四个方向的相邻图块
+				const directions = [
+					{ row: p.position.row - 1, col: p.position.col },
+					{ row: p.position.row + 1, col: p.position.col },
+					{ row: p.position.row, col: p.position.col - 1 },
+					{ row: p.position.row, col: p.position.col + 1 },
+				];
+
+				for (const dir of directions) {
+					const adjacentPiece = pieces.find((ap) => ap.position.row === dir.row && ap.position.col === dir.col);
+
+					if (adjacentPiece && !visited.has(adjacentPiece.id)) {
+						// 检查当前位置的相对关系
+						const currentRowDiff = p.position.row - adjacentPiece.position.row;
+						const currentColDiff = p.position.col - adjacentPiece.position.col;
+
+						// 检查原始位置的相对关系
+						const originalRowDiff = p.originalPosition.row - adjacentPiece.originalPosition.row;
+						const originalColDiff = p.originalPosition.col - adjacentPiece.originalPosition.col;
+
+						// 如果当前位置的相对关系与原始位置的相对关系一致，则标记为 grouped
+						if (currentRowDiff === originalRowDiff && currentColDiff === originalColDiff) {
+							visited.add(adjacentPiece.id);
+							group.push(adjacentPiece.id);
+							addAdjacentGrouped(adjacentPiece); // 递归查找
+						}
+					}
+				}
+			};
+
+			addAdjacentGrouped(piece);
+			return group;
+		},
+		[pieces]
+	);
 
 	/**
 	 * 交换两个图块的位置
@@ -342,6 +391,35 @@ export default function Puzzler() {
 						const isGroupedBottom = checkAdjacentGrouped('bottom');
 						const isGroupedLeft = checkAdjacentGrouped('left');
 
+						// 检查当前图块是否在 hovered group 中
+						const isInHoveredGroup = hoveredPiece !== null && getGroupedPieces(hoveredPiece).includes(piece.id);
+
+						// 检查相邻的 grouped piece 是否也在 hovered group 中
+						// 如果是，则隐藏相邻的边
+						const isAdjacentInHoveredGroup = (direction: 'top' | 'right' | 'bottom' | 'left'): boolean => {
+							if (!isInHoveredGroup) return false;
+
+							let adjacentRow = piece.position.row;
+							let adjacentCol = piece.position.col;
+
+							if (direction === 'top') adjacentRow--;
+							else if (direction === 'bottom') adjacentRow++;
+							else if (direction === 'left') adjacentCol--;
+							else if (direction === 'right') adjacentCol++;
+
+							const adjacentPiece = pieces.find((p) => p.position.row === adjacentRow && p.position.col === adjacentCol);
+
+							if (!adjacentPiece) return false;
+
+							// 检查相邻图块是否也在 hovered group 中
+							return hoveredPiece !== null && getGroupedPieces(hoveredPiece).includes(adjacentPiece.id);
+						};
+
+						const isGroupedTopInHovered = isAdjacentInHoveredGroup('top');
+						const isGroupedRightInHovered = isAdjacentInHoveredGroup('right');
+						const isGroupedBottomInHovered = isAdjacentInHoveredGroup('bottom');
+						const isGroupedLeftInHovered = isAdjacentInHoveredGroup('left');
+
 						const innerStyle: React.CSSProperties = {
 							width: '100%',
 							height: '100%',
@@ -360,13 +438,21 @@ export default function Puzzler() {
 						return (
 							<div
 								key={piece.id}
-								className={`puzzler-piece ${draggingPiece === piece.id ? 'puzzler-piece-dragging' : ''}`}
+								className={`puzzler-piece ${draggingPiece === piece.id ? 'puzzler-piece-dragging' : ''} ${
+									isInHoveredGroup ? 'puzzler-piece-hovered' : ''
+								} ${isGroupedTopInHovered ? 'puzzler-piece-grouped-top' : ''} ${
+									isGroupedRightInHovered ? 'puzzler-piece-grouped-right' : ''
+								} ${isGroupedBottomInHovered ? 'puzzler-piece-grouped-bottom' : ''} ${
+									isGroupedLeftInHovered ? 'puzzler-piece-grouped-left' : ''
+								}`}
 								style={tileStyle}
 								draggable
 								onDragStart={(e) => handleDragStart(e, piece.id)}
 								onDragEnd={handleDragEnd}
 								onDrop={(e) => handleDrop(e, piece.id)}
 								onDragOver={handleDragOver}
+								onMouseEnter={() => setHoveredPiece(piece.id)}
+								onMouseLeave={() => setHoveredPiece(null)}
 							>
 								<div className="puzzler-piece-inner" style={innerStyle} />
 							</div>

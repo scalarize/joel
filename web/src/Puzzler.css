@@ -173,10 +173,42 @@
 	/* background-position 通过内联样式精确控制 */
 }
 
-.puzzler-piece:hover {
-	transform: scale(1.02);
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+.puzzler-piece:hover,
+.puzzler-piece.puzzler-piece-hovered {
+	/* 使用伪元素显示边框，不影响内部元素尺寸 */
+	box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
 	z-index: 10;
+}
+
+.puzzler-piece:hover::before,
+.puzzler-piece.puzzler-piece-hovered::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	border: 2px solid #667eea;
+	border-radius: 4px;
+	pointer-events: none;
+	z-index: 1;
+}
+
+/* 隐藏相邻 grouped piece 之间的内部边界 */
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-top::before {
+	border-top: none;
+}
+
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-right::before {
+	border-right: none;
+}
+
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-bottom::before {
+	border-bottom: none;
+}
+
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-left::before {
+	border-left: none;
 }
 
 .puzzler-piece-dragging {
