@@ -67,6 +67,7 @@ export default function Puzzler() {
 	const [gameWon, setGameWon] = useState(false);
 	const [draggingPiece, setDraggingPiece] = useState<number | null>(null);
 	const [hoveredPiece, setHoveredPiece] = useState<number | null>(null);
+	const [dragStartCell, setDragStartCell] = useState<Position | null>(null);
 	const puzzleAreaRef = useRef<HTMLDivElement>(null);
 
 	/**
@@ -205,6 +206,65 @@ export default function Puzzler() {
 	);
 
 	/**
+	 * 获取所有 groups 及其 bounding boxes
+	 */
+	const getAllGroups = useCallback((): Map<
+		string,
+		{ pieces: number[]; boundingBox: { minRow: number; maxRow: number; minCol: number; maxCol: number } }
+	> => {
+		const groupsMap = new Map<
+			string,
+			{ pieces: number[]; boundingBox: { minRow: number; maxRow: number; minCol: number; maxCol: number } }
+		>();
+		const processedPieces = new Set<number>();
+
+		pieces.forEach((piece) => {
+			if (processedPieces.has(piece.id)) return;
+
+			const group = getGroupedPieces(piece.id);
+
+			// 如果只有一个 piece，不是 group，跳过
+			if (group.length === 1) return;
+
+			// 标记所有 pieces 为已处理
+			group.forEach((id) => processedPieces.add(id));
+
+			// 计算 bounding box
+			const groupPieces = pieces.filter((p) => group.includes(p.id));
+			const minRow = Math.min(...groupPieces.map((p) => p.position.row));
+			const maxRow = Math.max(...groupPieces.map((p) => p.position.row));
+			const minCol = Math.min(...groupPieces.map((p) => p.position.col));
+			const maxCol = Math.max(...groupPieces.map((p) => p.position.col));
+
+			// 使用最小的 piece id 作为 group id
+			const groupId = `group-${Math.min(...group)}`;
+
+			groupsMap.set(groupId, {
+				pieces: group,
+				boundingBox: { minRow, maxRow, minCol, maxCol },
+			});
+		});
+
+		return groupsMap;
+	}, [pieces, getGroupedPieces]);
+
+	/**
+	 * 检查 piece 是否属于某个 group
+	 */
+	const getPieceGroupId = useCallback(
+		(pieceId: number): string | null => {
+			const allGroups = getAllGroups();
+			for (const [groupId, group] of allGroups.entries()) {
+				if (group.pieces.includes(pieceId)) {
+					return groupId;
+				}
+			}
+			return null;
+		},
+		[getAllGroups]
+	);
+
+	/**
 	 * 交换两个图块的位置
 	 */
 	const swapPieces = useCallback(
@@ -247,11 +307,298 @@ export default function Puzzler() {
 	);
 
 	/**
-	 * 处理拖拽开始
+	 * 处理 bounding box 拖拽开始
 	 */
-	const handleDragStart = useCallback((e: React.DragEvent, pieceId: number) => {
-		e.dataTransfer.effectAllowed = 'move';
-		setDraggingPiece(pieceId);
+	const handleBoundingBoxDragStart = useCallback(
+		(e: React.DragEvent, groupId: string) => {
+			if (!puzzleAreaRef.current) {
+				e.preventDefault();
+				return;
+			}
+
+			const allGroups = getAllGroups();
+			const group = allGroups.get(groupId);
+			if (!group) {
+				e.preventDefault();
+				return;
+			}
+
+			const rect = puzzleAreaRef.current.getBoundingClientRect();
+			const config = DIFFICULTY_CONFIGS[difficulty];
+			const cellWidth = rect.width / config.cols;
+			const cellHeight = rect.height / config.rows;
+
+			// 计算拖拽开始时的 cell 位置（鼠标位置）
+			const mouseX = e.clientX - rect.left;
+			const mouseY = e.clientY - rect.top;
+			const startCol = Math.floor(mouseX / cellWidth);
+			const startRow = Math.floor(mouseY / cellHeight);
+
+			// 检查点击位置是否真的属于 group 内的某个 piece
+			const clickPosition = `${startRow},${startCol}`;
+			const groupPiecesPositions = new Set<string>();
+			group.pieces.forEach((pieceId) => {
+				const piece = pieces.find((p) => p.id === pieceId);
+				if (piece) {
+					groupPiecesPositions.add(`${piece.position.row},${piece.position.col}`);
+				}
+			});
+
+			// 如果点击位置不属于 group 内的任何 piece，阻止拖拽
+			if (!groupPiecesPositions.has(clickPosition)) {
+				console.log('[Puzzler] Drag Start: 点击位置不在 group 的实际 pieces 上，阻止拖拽');
+				e.preventDefault();
+				return;
+			}
+
+			e.dataTransfer.effectAllowed = 'move';
+
+			console.log('[Puzzler] Drag Start:', {
+				groupId,
+				mouseCell: { row: startRow, col: startCol },
+				boundingBox: group.boundingBox,
+				groupPieces: group.pieces.map((id) => {
+					const p = pieces.find((pp) => pp.id === id);
+					return p ? { id, pos: p.position } : null;
+				}),
+			});
+
+			setDragStartCell({ row: startRow, col: startCol });
+
+			if (group.pieces.length > 0) {
+				// 使用第一个 piece 作为 draggingPiece（用于视觉反馈）
+				setDraggingPiece(group.pieces[0]);
+			}
+
+			if (!gameStarted) {
+				setGameStarted(true);
+			}
+		},
+		[getAllGroups, pieces, difficulty, gameStarted]
+	);
+
+	/**
+	 * 处理单个 piece 拖拽开始（仅用于非 grouped pieces）
+	 */
+	const handleDragStart = useCallback(
+		(e: React.DragEvent, pieceId: number) => {
+			// 如果这个 piece 属于某个 group，不允许拖拽
+			console.log('[Puzzler] handleDragStart', pieceId);
+			const groupId = getPieceGroupId(pieceId);
+			if (groupId) {
+				console.log('[Puzzler] handleDragStart rejected coz in group', groupId);
+				e.preventDefault();
+				return;
+			}
+
+			e.dataTransfer.effectAllowed = 'move';
+			setDraggingPiece(pieceId);
+
+			if (!gameStarted) {
+				setGameStarted(true);
+			}
+		},
+		[getPieceGroupId, gameStarted]
+	);
+
+	/**
+	 * 处理 bounding box drop
+	 */
+	const handleBoundingBoxDrop = useCallback(
+		(e: React.DragEvent, groupId: string) => {
+			e.preventDefault();
+			console.log('[Puzzler] handleBoundingBoxDrop', groupId, dragStartCell);
+
+			if (!puzzleAreaRef.current || !dragStartCell) {
+				console.log('[Puzzler] handleBoundingBoxDrop', 'puzzleAreaRef.current or dragStartCell not found');
+				setDraggingPiece(null);
+				setDragStartCell(null);
+				return;
+			}
+
+			const allGroups = getAllGroups();
+			const group = allGroups.get(groupId);
+			if (!group) {
+				console.log('[Puzzler] handleBoundingBoxDrop', 'group not found');
+				setDraggingPiece(null);
+				setDragStartCell(null);
+				return;
+			}
+
+			const rect = puzzleAreaRef.current.getBoundingClientRect();
+			const config = DIFFICULTY_CONFIGS[difficulty];
+			const cellWidth = rect.width / config.cols;
+			const cellHeight = rect.height / config.rows;
+
+			// 计算 drop 时的 cell 位置（鼠标位置）
+			const mouseX = e.clientX - rect.left;
+			const mouseY = e.clientY - rect.top;
+			const dropCol = Math.floor(mouseX / cellWidth);
+			const dropRow = Math.floor(mouseY / cellHeight);
+
+			// 检查边界
+			if (dropRow < 0 || dropRow >= config.rows || dropCol < 0 || dropCol >= config.cols) {
+				console.log('[Puzzler] Drop 超出边界，拒绝');
+				setDraggingPiece(null);
+				setDragStartCell(null);
+				return;
+			}
+
+			// 计算偏移量：drop 位置相对于鼠标点击位置的偏移
+			const rowOffset = dropRow - dragStartCell.row;
+			const colOffset = dropCol - dragStartCell.col;
+
+			console.log('[Puzzler] Drop:', {
+				groupId,
+				dropCell: { row: dropRow, col: dropCol },
+				startCell: dragStartCell,
+				offset: { row: rowOffset, col: colOffset },
+			});
+
+			// 计算 group pieces 移动前的位置集合
+			const groupPiecesBefore = new Set<string>();
+			group.pieces.forEach((pieceId) => {
+				const piece = pieces.find((p) => p.id === pieceId);
+				if (piece) {
+					groupPiecesBefore.add(`${piece.position.row},${piece.position.col}`);
+				}
+			});
+
+			console.log('[Puzzler] Group pieces before:', Array.from(groupPiecesBefore));
+
+			// 计算 group pieces 移动后的位置集合
+			const groupPiecesAfter = new Set<string>();
+			group.pieces.forEach((pieceId) => {
+				const piece = pieces.find((p) => p.id === pieceId);
+				if (piece) {
+					const newRow = piece.position.row + rowOffset;
+					const newCol = piece.position.col + colOffset;
+
+					// 检查边界
+					if (newRow < 0 || newRow >= config.rows || newCol < 0 || newCol >= config.cols) {
+						console.log('[Puzzler] Group 移动后超出边界，拒绝');
+						setDraggingPiece(null);
+						setDragStartCell(null);
+						return;
+					}
+
+					groupPiecesAfter.add(`${newRow},${newCol}`);
+					console.log(`[Puzzler] Piece ${pieceId}: ${piece.position.row},${piece.position.col} -> ${newRow},${newCol}`);
+				}
+			});
+
+			console.log('[Puzzler] Group pieces after:', Array.from(groupPiecesAfter));
+
+			// 计算空出来的位置（移动前的位置 - 移动后的位置）
+			const emptyPositions: Position[] = [];
+			groupPiecesBefore.forEach((posStr) => {
+				if (!groupPiecesAfter.has(posStr)) {
+					const [row, col] = posStr.split(',').map(Number);
+					emptyPositions.push({ row, col });
+				}
+			});
+
+			console.log('[Puzzler] Empty positions:', emptyPositions);
+
+			// 计算被挤占的 pieces（移动后的位置上的非 group pieces）
+			const displacedPieces: Piece[] = [];
+			groupPiecesAfter.forEach((posStr) => {
+				if (!groupPiecesBefore.has(posStr)) {
+					const [row, col] = posStr.split(',').map(Number);
+					const piece = pieces.find((p) => p.position.row === row && p.position.col === col && !group.pieces.includes(p.id));
+					if (piece) {
+						displacedPieces.push(piece);
+						console.log(`[Puzzler] Displaced piece ${piece.id} at ${row},${col}`);
+					}
+				}
+			});
+
+			console.log(
+				'[Puzzler] Displaced pieces:',
+				displacedPieces.map((p) => ({ id: p.id, pos: p.position }))
+			);
+
+			// 验证合法性：被挤占的 pieces 数量必须等于空出来的位置数量
+			if (displacedPieces.length !== emptyPositions.length) {
+				console.log('[Puzzler] 被挤占的 pieces 数量与空位置数量不匹配，拒绝 drop');
+				setDraggingPiece(null);
+				setDragStartCell(null);
+				return;
+			}
+
+			// 排序：从左到右、从上到下
+			displacedPieces.sort((a, b) => {
+				if (a.position.row !== b.position.row) {
+					return a.position.row - b.position.row;
+				}
+				return a.position.col - b.position.col;
+			});
+
+			emptyPositions.sort((a, b) => {
+				if (a.row !== b.row) {
+					return a.row - b.row;
+				}
+				return a.col - b.col;
+			});
+
+			// 执行移动
+			setPieces((prevPieces) => {
+				console.log(
+					'[Puzzler] 开始执行移动，当前所有 pieces:',
+					prevPieces.map((p) => ({ id: p.id, pos: p.position }))
+				);
+				console.log('[Puzzler] Group pieces IDs:', group.pieces);
+
+				const updated = prevPieces.map((p) => {
+					// 1. 移动 group 内的 pieces
+					if (group.pieces.includes(p.id)) {
+						const newRow = p.position.row + rowOffset;
+						const newCol = p.position.col + colOffset;
+						console.log(`[Puzzler] Moving group piece ${p.id}: ${p.position.row},${p.position.col} -> ${newRow},${newCol}`);
+						return { ...p, position: { row: newRow, col: newCol } };
+					}
+
+					// 2. 移动被挤占的 pieces 到空位置
+					const displacedIndex = displacedPieces.findIndex((dp) => dp.id === p.id);
+					if (displacedIndex !== -1) {
+						const targetPos = emptyPositions[displacedIndex];
+						console.log(
+							`[Puzzler] Moving displaced piece ${p.id}: ${p.position.row},${p.position.col} -> ${targetPos.row},${targetPos.col}`
+						);
+						return { ...p, position: { row: targetPos.row, col: targetPos.col } };
+					}
+
+					return p;
+				});
+
+				console.log(
+					'[Puzzler] 移动完成，更新后的所有 pieces:',
+					updated.map((p) => ({ id: p.id, pos: p.position }))
+				);
+
+				// 检查是否胜利
+				const allCorrect = updated.every((p) => p.position.row === p.originalPosition.row && p.position.col === p.originalPosition.col);
+
+				if (allCorrect) {
+					setGameWon(true);
+					console.log('[Puzzler] 游戏胜利！');
+				}
+
+				return updated;
+			});
+
+			setDraggingPiece(null);
+			setDragStartCell(null);
+		},
+		[getAllGroups, pieces, dragStartCell, difficulty]
+	);
+
+	/**
+	 * 处理 bounding box 拖拽结束（取消拖拽时清理状态）
+	 */
+	const handleBoundingBoxDragEnd = useCallback(() => {
+		setDraggingPiece(null);
+		setDragStartCell(null);
 	}, []);
 
 	/**
@@ -267,15 +614,24 @@ export default function Puzzler() {
 	const handleDrop = useCallback(
 		(e: React.DragEvent, targetPieceId: number) => {
 			e.preventDefault();
+			console.log('[Puzzler] handleDrop', targetPieceId);
+
+			// 如果正在拖拽一个 group，应该由 handleBoundingBoxDrop 处理
+			// 检查 dragStartCell 是否存在，如果存在说明正在拖拽 group
+			if (dragStartCell !== null) {
+				console.log('[Puzzler] handleDrop: 检测到正在拖拽 group，忽略单个 piece 的 drop');
+				return;
+			}
 
 			if (draggingPiece === null || draggingPiece === targetPieceId) {
+				console.log('[Puzzler] handleDrop: draggingPiece is null or draggingPiece === targetPieceId，忽略', draggingPiece, targetPieceId);
 				return;
 			}
 
 			swapPieces(draggingPiece, targetPieceId);
 			setDraggingPiece(null);
 		},
-		[draggingPiece, swapPieces]
+		[draggingPiece, dragStartCell, swapPieces]
 	);
 
 	/**
@@ -333,8 +689,157 @@ export default function Puzzler() {
 			)}
 
 			<div className="puzzler-container">
-				<div className="puzzler-area" ref={puzzleAreaRef} data-difficulty={difficulty}>
+				<div
+					className="puzzler-area"
+					ref={puzzleAreaRef}
+					data-difficulty={difficulty}
+					onDragOver={(e) => {
+						e.preventDefault();
+						e.dataTransfer.dropEffect = 'move';
+					}}
+					onDrop={(e) => {
+						e.preventDefault();
+						// 如果正在拖拽 group（dragStartCell 不为 null），尝试找到对应的 group 并处理 drop
+						if (dragStartCell !== null) {
+							const rect = puzzleAreaRef.current?.getBoundingClientRect();
+							if (!rect) return;
+
+							// 找到被拖拽的 group（通过 dragStartCell 找到对应的 piece，再找到该 piece 所属的 group）
+							const allGroups = getAllGroups();
+							const draggedGroup = Array.from(allGroups.entries()).find(([_, group]) => {
+								return group.pieces.some((pieceId) => {
+									const piece = pieces.find((p) => p.id === pieceId);
+									return piece && piece.position.row === dragStartCell.row && piece.position.col === dragStartCell.col;
+								});
+							});
+
+							if (draggedGroup) {
+								handleBoundingBoxDrop(e, draggedGroup[0]);
+								return;
+							}
+						}
+					}}
+				>
+					{/* 渲染 bounding boxes（包含 grouped pieces） */}
+					{Array.from(getAllGroups().entries()).map(
+						([groupId, group]: [
+							string,
+							{ pieces: number[]; boundingBox: { minRow: number; maxRow: number; minCol: number; maxCol: number } }
+						]) => {
+							const boundingBoxRows = group.boundingBox.maxRow - group.boundingBox.minRow + 1;
+							const boundingBoxCols = group.boundingBox.maxCol - group.boundingBox.minCol + 1;
+
+							return (
+								<div
+									key={groupId}
+									className="puzzler-bounding-box"
+									style={{
+										gridRow: `${group.boundingBox.minRow + 1} / span ${boundingBoxRows}`,
+										gridColumn: `${group.boundingBox.minCol + 1} / span ${boundingBoxCols}`,
+									}}
+									draggable
+									onDragStart={(e) => handleBoundingBoxDragStart(e, groupId)}
+									onDragEnd={handleBoundingBoxDragEnd}
+									onDrop={(e) => {
+										e.preventDefault();
+
+										// 检查 drop 位置是否真的属于 group 内的某个 piece
+										if (!puzzleAreaRef.current) {
+											e.stopPropagation();
+											return;
+										}
+
+										const rect = puzzleAreaRef.current.getBoundingClientRect();
+										const config = DIFFICULTY_CONFIGS[difficulty];
+										const cellWidth = rect.width / config.cols;
+										const cellHeight = rect.height / config.rows;
+
+										const mouseX = e.clientX - rect.left;
+										const mouseY = e.clientY - rect.top;
+										const dropCol = Math.floor(mouseX / cellWidth);
+										const dropRow = Math.floor(mouseY / cellHeight);
+
+										// 检查 drop 位置是否属于 group 内的某个 piece
+										const dropPosition = `${dropRow},${dropCol}`;
+										const groupPiecesPositions = new Set<string>();
+										group.pieces.forEach((pieceId) => {
+											const piece = pieces.find((p) => p.id === pieceId);
+											if (piece) {
+												groupPiecesPositions.add(`${piece.position.row},${piece.position.col}`);
+											}
+										});
+
+										// 如果 drop 位置不属于 group 内的任何 piece，让事件冒泡
+										if (!groupPiecesPositions.has(dropPosition)) {
+											console.log('[Puzzler] Drop 位置不在 group 的实际 pieces 上，让事件冒泡');
+											return; // 不阻止冒泡，让 puzzler-area 处理
+										}
+
+										e.stopPropagation(); // 阻止事件冒泡，避免触发 puzzler-area 的 onDrop
+										handleBoundingBoxDrop(e, groupId);
+									}}
+									onDragOver={(e) => {
+										e.preventDefault();
+										e.stopPropagation(); // 阻止事件冒泡
+										e.dataTransfer.dropEffect = 'move';
+									}}
+								>
+									{/* 在 bounding box 内渲染所有 grouped pieces */}
+									{group.pieces.map((pieceId) => {
+										const piece = pieces.find((p) => p.id === pieceId);
+										if (!piece) return null;
+
+										// 计算 piece 在 bounding box 内的相对位置
+										const relativeRow = piece.position.row - group.boundingBox.minRow;
+										const relativeCol = piece.position.col - group.boundingBox.minCol;
+
+										// 计算背景图片位置
+										const bgPosX = (piece.originalPosition.col / (config.cols - 1)) * 100;
+										const bgPosY = (piece.originalPosition.row / (config.rows - 1)) * 100;
+
+										const innerStyle: React.CSSProperties = {
+											width: '100%',
+											height: '100%',
+											backgroundImage: `url(${imageUrl})`,
+											backgroundSize: `${config.cols * 100}% ${config.rows * 100}%`,
+											backgroundPosition: `${bgPosX}% ${bgPosY}%`,
+											backgroundRepeat: 'no-repeat',
+										};
+
+										// 计算 piece 在 bounding box 内的百分比位置
+										const cellWidthPercent = 100 / boundingBoxCols;
+										const cellHeightPercent = 100 / boundingBoxRows;
+
+										return (
+											<div
+												key={pieceId}
+												className="puzzler-piece puzzler-piece-in-bounding-box"
+												style={{
+													position: 'absolute',
+													left: `${relativeCol * cellWidthPercent}%`,
+													top: `${relativeRow * cellHeightPercent}%`,
+													width: `${cellWidthPercent}%`,
+													height: `${cellHeightPercent}%`,
+												}}
+											>
+												<div className="puzzler-piece-inner" style={innerStyle} />
+											</div>
+										);
+									})}
+								</div>
+							);
+						}
+					)}
+
 					{pieces.map((piece) => {
+						const pieceGroupId = getPieceGroupId(piece.id);
+						const isGrouped = pieceGroupId !== null;
+
+						// 如果这个 piece 属于某个 group，不在原位置渲染（已在 bounding box 内渲染）
+						if (isGrouped) {
+							return null;
+						}
+
 						// 确保每个图块都有有效的位置
 						if (
 							piece.position.row < 0 ||
@@ -446,7 +951,7 @@ export default function Puzzler() {
 									isGroupedLeftInHovered ? 'puzzler-piece-grouped-left' : ''
 								}`}
 								style={tileStyle}
-								draggable
+								draggable={!isGrouped}
 								onDragStart={(e) => handleDragStart(e, piece.id)}
 								onDragEnd={handleDragEnd}
 								onDrop={(e) => handleDrop(e, piece.id)}

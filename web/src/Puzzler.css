@@ -173,6 +173,26 @@
 	/* background-position 通过内联样式精确控制 */
 }
 
+/* Bounding box 用于拖拽 grouped blocks */
+.puzzler-bounding-box {
+	position: relative;
+	/* 完全透明，只用于拖拽逻辑 */
+	background: transparent;
+	cursor: move;
+	z-index: 1; /* 低于单独 pieces，但可拖拽 */
+	/* 确保 bounding box 可以接收鼠标事件 */
+	pointer-events: auto;
+	/* 作为容器，包含内部的 pieces */
+	overflow: visible;
+}
+
+/* Bounding box 内的 piece */
+.puzzler-piece-in-bounding-box {
+	/* 在 bounding box 内使用绝对定位 */
+	position: absolute;
+	/* 其他样式继承自 .puzzler-piece */
+}
+
 .puzzler-piece:hover,
 .puzzler-piece.puzzler-piece-hovered {
 	/* 使用伪元素显示边框，不影响内部元素尺寸 */
