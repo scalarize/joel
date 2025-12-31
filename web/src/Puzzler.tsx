@@ -694,6 +694,7 @@ export default function Puzzler() {
 
 	/**
 	 * 根据触摸位置获取对应的 cell 位置
+	 * 即使超出边界也返回最近的合法 cell，确保预览效果不会消失
 	 */
 	const getCellFromTouch = useCallback(
 		(touch: { clientX: number; clientY: number }): Position | null => {
@@ -707,13 +708,14 @@ export default function Puzzler() {
 			const x = touch.clientX - rect.left;
 			const y = touch.clientY - rect.top;
 
-			const col = Math.floor(x / cellWidth);
-			const row = Math.floor(y / cellHeight);
+			let col = Math.floor(x / cellWidth);
+			let row = Math.floor(y / cellHeight);
 
-			// 检查边界
-			if (row < 0 || row >= config.rows || col < 0 || col >= config.cols) {
-				return null;
-			}
+			// 即使超出边界，也返回最近的合法 cell，确保预览效果不会消失
+			if (row < 0) row = 0;
+			if (row >= config.rows) row = config.rows - 1;
+			if (col < 0) col = 0;
+			if (col >= config.cols) col = config.cols - 1;
 
 			return { row, col };
 		},
@@ -802,7 +804,7 @@ export default function Puzzler() {
 	);
 
 	/**
-	 * 处理触摸移动
+	 * 处理触摸移动（可以在容器或拼图块上触发）
 	 */
 	const handleTouchMove = useCallback(
 		(e: React.TouchEvent) => {
@@ -820,12 +822,15 @@ export default function Puzzler() {
 
 			// 防止页面滚动
 			e.preventDefault();
+			// 允许事件继续传播，确保容器也能收到事件
+			e.stopPropagation();
 
 			// 计算当前触摸位置对应的 cell，用于显示拖动预览
 			const currentCell = getCellFromTouch(touch);
-			setTouchCurrentCell(currentCell);
-
-			console.log('[Puzzler] 触摸移动，当前位置:', currentCell);
+			if (currentCell) {
+				setTouchCurrentCell(currentCell);
+				console.log('[Puzzler] 触摸移动，当前位置:', currentCell);
+			}
 		},
 		[touchDraggingPiece, touchStartPosition, getCellFromTouch]
 	);
@@ -1293,6 +1298,7 @@ export default function Puzzler() {
 												draggable
 												onDragStart={(e) => handleBoundingBoxDragStart(e, groupId)}
 												onDragEnd={handleBoundingBoxDragEnd}
+												onTouchMove={handleTouchMove}
 												onDrop={(e) => {
 													e.preventDefault();
 
@@ -1518,6 +1524,7 @@ export default function Puzzler() {
 								onDragOver={handleDragOver}
 								onMouseEnter={() => setHoveredPiece(piece.id)}
 								onMouseLeave={() => setHoveredPiece(null)}
+								onTouchMove={handleTouchMove}
 							>
 								<div className="puzzler-piece-inner" style={innerStyle} />
 							</div>
