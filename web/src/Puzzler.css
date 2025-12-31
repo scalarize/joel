@@ -163,6 +163,48 @@
 	z-index: 2; /* 高于 bounding box，确保可以接收鼠标事件 */
 }
 
+/* 当 piece 在 hovered group 中时，根据相邻关系移除内部边界的 border-radius */
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-top {
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+}
+
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-right {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-bottom {
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-left {
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+}
+
+/* 当 piece 在 dragging group 中时，同样移除内部边界的 border-radius */
+.puzzler-piece-dragging.puzzler-piece-grouped-top {
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+}
+
+.puzzler-piece-dragging.puzzler-piece-grouped-right {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.puzzler-piece-dragging.puzzler-piece-grouped-bottom {
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.puzzler-piece-dragging.puzzler-piece-grouped-left {
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+}
+
 .puzzler-piece-inner {
 	/* 内层容器：负责背景展示，尺寸是相对于父容器的百分比，不受 gap 影响 */
 	position: absolute;

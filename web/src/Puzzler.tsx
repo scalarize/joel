@@ -849,14 +849,19 @@ export default function Puzzler() {
 										// 检查当前 piece 是否在 hovered group 中
 										const isInHoveredGroup = hoveredPiece !== null && group.pieces.includes(hoveredPiece);
 
+										// 检查当前 piece 是否在 dragging group 中
+										const isInDraggingGroup = dragStartCell !== null && draggingPiece !== null && group.pieces.includes(draggingPiece);
+
 										return (
 											<div
 												key={pieceId}
 												className={`puzzler-piece puzzler-piece-in-bounding-box ${isInHoveredGroup ? 'puzzler-piece-hovered' : ''} ${
-													isGroupedTop && isInHoveredGroup ? 'puzzler-piece-grouped-top' : ''
-												} ${isGroupedRight && isInHoveredGroup ? 'puzzler-piece-grouped-right' : ''} ${
-													isGroupedBottom && isInHoveredGroup ? 'puzzler-piece-grouped-bottom' : ''
-												} ${isGroupedLeft && isInHoveredGroup ? 'puzzler-piece-grouped-left' : ''}`}
+													isInDraggingGroup ? 'puzzler-piece-dragging' : ''
+												} ${isGroupedTop && (isInHoveredGroup || isInDraggingGroup) ? 'puzzler-piece-grouped-top' : ''} ${
+													isGroupedRight && (isInHoveredGroup || isInDraggingGroup) ? 'puzzler-piece-grouped-right' : ''
+												} ${isGroupedBottom && (isInHoveredGroup || isInDraggingGroup) ? 'puzzler-piece-grouped-bottom' : ''} ${
+													isGroupedLeft && (isInHoveredGroup || isInDraggingGroup) ? 'puzzler-piece-grouped-left' : ''
+												}`}
 												style={{
 													position: 'absolute',
 													left: `${relativeCol * cellWidthPercent}%`,
@@ -1051,6 +1056,10 @@ export default function Puzzler() {
 						const isGroupedBottomInHovered = isAdjacentInHoveredGroup('bottom');
 						const isGroupedLeftInHovered = isAdjacentInHoveredGroup('left');
 
+						// 检查当前 piece 是否在 dragging group 中（用于移除内部边界的 border-radius）
+						const isInDraggingGroup =
+							dragStartCell !== null && draggingPiece !== null && getGroupedPieces(draggingPiece).includes(piece.id);
+
 						const innerStyle: React.CSSProperties = {
 							width: '100%',
 							height: '100%',
@@ -1066,15 +1075,21 @@ export default function Puzzler() {
 						if (isGroupedBottom) tileStyle.marginBottom = '-2px';
 						if (isGroupedLeft) tileStyle.marginLeft = '-2px';
 
+						// 检查在 dragging group 中时，哪些边界应该移除 border-radius
+						const isGroupedTopInDragging = isInDraggingGroup && isGroupedTop;
+						const isGroupedRightInDragging = isInDraggingGroup && isGroupedRight;
+						const isGroupedBottomInDragging = isInDraggingGroup && isGroupedBottom;
+						const isGroupedLeftInDragging = isInDraggingGroup && isGroupedLeft;
+
 						return (
 							<div
 								key={piece.id}
-								className={`puzzler-piece ${draggingPiece === piece.id ? 'puzzler-piece-dragging' : ''} ${
+								className={`puzzler-piece ${draggingPiece === piece.id || isInDraggingGroup ? 'puzzler-piece-dragging' : ''} ${
 									isInHoveredGroup ? 'puzzler-piece-hovered' : ''
-								} ${isGroupedTopInHovered ? 'puzzler-piece-grouped-top' : ''} ${
-									isGroupedRightInHovered ? 'puzzler-piece-grouped-right' : ''
-								} ${isGroupedBottomInHovered ? 'puzzler-piece-grouped-bottom' : ''} ${
-									isGroupedLeftInHovered ? 'puzzler-piece-grouped-left' : ''
+								} ${isGroupedTopInHovered || isGroupedTopInDragging ? 'puzzler-piece-grouped-top' : ''} ${
+									isGroupedRightInHovered || isGroupedRightInDragging ? 'puzzler-piece-grouped-right' : ''
+								} ${isGroupedBottomInHovered || isGroupedBottomInDragging ? 'puzzler-piece-grouped-bottom' : ''} ${
+									isGroupedLeftInHovered || isGroupedLeftInDragging ? 'puzzler-piece-grouped-left' : ''
 								}`}
 								style={tileStyle}
 								draggable={!isGrouped}
