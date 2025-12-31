@@ -871,11 +871,40 @@ export default function Puzzler() {
 												onDragEnd={handleBoundingBoxDragEnd}
 												onDrop={(e) => {
 													e.preventDefault();
-													e.stopPropagation();
-													handleBoundingBoxDrop(e, groupId);
+
+													// 检查是否正在拖拽单个 piece（不是 group）
+													// 如果 dragStartCell === null 且 draggingPiece !== null，说明是单个 piece 的拖拽
+													if (dragStartCell === null && draggingPiece !== null) {
+														// 单个 piece 的拖拽，找到 drop 位置的 piece 并交换
+														const dropPiece = pieces.find((p) => p.id === pieceId);
+														if (dropPiece && draggingPiece !== dropPiece.id) {
+															console.log('[Puzzler] 单个 piece drop 到 group 内的 piece，执行交换');
+															// 让事件冒泡，或者直接调用 handleDrop
+															// 但这里我们需要找到 dropPiece 的 id
+															handleDrop(e, dropPiece.id);
+														}
+														// 不阻止冒泡，让单个 piece 的 drop 逻辑处理
+														return;
+													}
+
+													// 如果是 group 的拖拽，处理 group drop
+													if (dragStartCell !== null) {
+														e.stopPropagation();
+														handleBoundingBoxDrop(e, groupId);
+													}
 												}}
 												onDragOver={(e) => {
 													e.preventDefault();
+
+													// 检查是否正在拖拽单个 piece
+													if (dragStartCell === null && draggingPiece !== null) {
+														// 单个 piece 的拖拽，允许 drop
+														e.dataTransfer.dropEffect = 'move';
+														// 不阻止冒泡，让单个 piece 的 dragOver 逻辑处理
+														return;
+													}
+
+													// 如果是 group 的拖拽，阻止冒泡并设置 dropEffect
 													e.stopPropagation();
 													e.dataTransfer.dropEffect = 'move';
 												}}
