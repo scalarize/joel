@@ -68,6 +68,11 @@ export default function Puzzler() {
 	const [draggingPiece, setDraggingPiece] = useState<number | null>(null);
 	const [hoveredPiece, setHoveredPiece] = useState<number | null>(null);
 	const [dragStartCell, setDragStartCell] = useState<Position | null>(null);
+	// 触摸事件相关状态
+	const [touchDraggingPiece, setTouchDraggingPiece] = useState<number | null>(null);
+	const [touchStartCell, setTouchStartCell] = useState<Position | null>(null);
+	const [touchStartPosition, setTouchStartPosition] = useState<{ x: number; y: number } | null>(null);
+	const [touchCurrentCell, setTouchCurrentCell] = useState<Position | null>(null); // 当前触摸位置对应的 cell，用于显示拖动预览
 	const puzzleAreaRef = useRef<HTMLDivElement>(null);
 
 	/**
@@ -114,6 +119,11 @@ export default function Puzzler() {
 		setGameStarted(false);
 		setGameWon(false);
 		setDraggingPiece(null);
+		// 清理触摸相关状态
+		setTouchDraggingPiece(null);
+		setTouchStartCell(null);
+		setTouchStartPosition(null);
+		setTouchCurrentCell(null);
 	}, [difficulty]);
 
 	/**
@@ -682,10 +692,401 @@ export default function Puzzler() {
 		e.dataTransfer.dropEffect = 'move';
 	}, []);
 
+	/**
+	 * 根据触摸位置获取对应的 cell 位置
+	 */
+	const getCellFromTouch = useCallback(
+		(touch: { clientX: number; clientY: number }): Position | null => {
+			if (!puzzleAreaRef.current) return null;
+
+			const rect = puzzleAreaRef.current.getBoundingClientRect();
+			const config = DIFFICULTY_CONFIGS[difficulty];
+			const cellWidth = rect.width / config.cols;
+			const cellHeight = rect.height / config.rows;
+
+			const x = touch.clientX - rect.left;
+			const y = touch.clientY - rect.top;
+
+			const col = Math.floor(x / cellWidth);
+			const row = Math.floor(y / cellHeight);
+
+			// 检查边界
+			if (row < 0 || row >= config.rows || col < 0 || col >= config.cols) {
+				return null;
+			}
+
+			return { row, col };
+		},
+		[difficulty]
+	);
+
+	/**
+	 * 根据 cell 位置获取对应的 piece
+	 */
+	const getPieceAtCell = useCallback(
+		(cell: Position): Piece | null => {
+			return pieces.find((p) => p.position.row === cell.row && p.position.col === cell.col) || null;
+		},
+		[pieces]
+	);
+
+	/**
+	 * 处理触摸开始
+	 */
+	const handleTouchStart = useCallback(
+		(e: React.TouchEvent) => {
+			console.log('[Puzzler] 触摸开始');
+			const touch = e.touches[0];
+			if (!touch) return;
+
+			const cell = getCellFromTouch(touch);
+			if (!cell) {
+				console.log('[Puzzler] 触摸位置无效');
+				return;
+			}
+
+			const piece = getPieceAtCell(cell);
+			if (!piece) {
+				console.log('[Puzzler] 触摸位置没有拼图块');
+				return;
+			}
+
+			// 检查是否属于某个 group
+			const groupId = getPieceGroupId(piece.id);
+			if (groupId) {
+				// 处理 group 的触摸拖动
+				const allGroups = getAllGroups();
+				const group = allGroups.get(groupId);
+				if (!group) return;
+
+				// 检查触摸位置是否真的属于 group 内的某个 piece
+				const touchPosition = `${cell.row},${cell.col}`;
+				const groupPiecesPositions = new Set<string>();
+				group.pieces.forEach((pieceId) => {
+					const p = pieces.find((pp) => pp.id === pieceId);
+					if (p) {
+						groupPiecesPositions.add(`${p.position.row},${p.position.col}`);
+					}
+				});
+
+				if (!groupPiecesPositions.has(touchPosition)) {
+					console.log('[Puzzler] 触摸位置不在 group 的实际 pieces 上，忽略');
+					return;
+				}
+
+				setTouchStartCell(cell);
+				setTouchStartPosition({ x: touch.clientX, y: touch.clientY });
+				if (group.pieces.length > 0) {
+					setTouchDraggingPiece(group.pieces[0]);
+				}
+
+				if (!gameStarted) {
+					setGameStarted(true);
+				}
+
+				console.log('[Puzzler] 触摸开始 - Group:', groupId, 'Cell:', cell);
+			} else {
+				// 处理单个 piece 的触摸拖动
+				setTouchStartCell(cell);
+				setTouchStartPosition({ x: touch.clientX, y: touch.clientY });
+				setTouchDraggingPiece(piece.id);
+
+				if (!gameStarted) {
+					setGameStarted(true);
+				}
+
+				console.log('[Puzzler] 触摸开始 - Piece:', piece.id, 'Cell:', cell);
+			}
+		},
+		[getCellFromTouch, getPieceAtCell, getPieceGroupId, getAllGroups, pieces, gameStarted]
+	);
+
+	/**
+	 * 处理触摸移动
+	 */
+	const handleTouchMove = useCallback(
+		(e: React.TouchEvent) => {
+			if (touchDraggingPiece === null || touchStartPosition === null) {
+				// 如果状态不一致，清理所有触摸状态
+				setTouchDraggingPiece(null);
+				setTouchStartCell(null);
+				setTouchStartPosition(null);
+				setTouchCurrentCell(null);
+				return;
+			}
+
+			const touch = e.touches[0];
+			if (!touch) return;
+
+			// 防止页面滚动
+			e.preventDefault();
+
+			// 计算当前触摸位置对应的 cell，用于显示拖动预览
+			const currentCell = getCellFromTouch(touch);
+			setTouchCurrentCell(currentCell);
+
+			console.log('[Puzzler] 触摸移动，当前位置:', currentCell);
+		},
+		[touchDraggingPiece, touchStartPosition, getCellFromTouch]
+	);
+
+	/**
+	 * 处理触摸结束
+	 */
+	const handleTouchEnd = useCallback(
+		(e: React.TouchEvent) => {
+			console.log('[Puzzler] 触摸结束');
+
+			// 使用 clearTouchState 确保状态被清理
+			const cleanup = () => {
+				setTouchDraggingPiece(null);
+				setTouchStartCell(null);
+				setTouchStartPosition(null);
+				setTouchCurrentCell(null);
+			};
+
+			if (touchDraggingPiece === null || touchStartCell === null || touchStartPosition === null) {
+				// 清理状态
+				cleanup();
+				return;
+			}
+
+			const touch = e.changedTouches[0];
+			if (!touch) {
+				// 清理状态
+				cleanup();
+				return;
+			}
+
+			const endCell = getCellFromTouch(touch);
+			if (!endCell) {
+				console.log('[Puzzler] 触摸结束位置无效');
+				// 清理状态
+				cleanup();
+				return;
+			}
+
+			// 检查是否属于某个 group
+			const piece = getPieceAtCell(touchStartCell);
+			if (!piece) {
+				// 清理状态
+				cleanup();
+				return;
+			}
+
+			const groupId = getPieceGroupId(piece.id);
+			if (groupId) {
+				// 处理 group 的触摸拖动结束
+				const allGroups = getAllGroups();
+				const group = allGroups.get(groupId);
+				if (!group) {
+					// 清理状态
+					cleanup();
+					return;
+				}
+
+				// 计算偏移量
+				const rowOffset = endCell.row - touchStartCell.row;
+				const colOffset = endCell.col - touchStartCell.col;
+
+				if (rowOffset === 0 && colOffset === 0) {
+					console.log('[Puzzler] 触摸拖动：没有实际移动，忽略');
+					// 清理状态
+					cleanup();
+					return;
+				}
+
+				// 使用与 handleBoundingBoxDrop 相同的逻辑处理 group 移动
+				const config = DIFFICULTY_CONFIGS[difficulty];
+
+				// 计算 group pieces 移动前的位置集合
+				const groupPiecesBefore = new Set<string>();
+				group.pieces.forEach((pieceId) => {
+					const p = pieces.find((pp) => pp.id === pieceId);
+					if (p) {
+						groupPiecesBefore.add(`${p.position.row},${p.position.col}`);
+					}
+				});
+
+				// 计算 group pieces 移动后的位置集合
+				const groupPiecesAfter = new Set<string>();
+				group.pieces.forEach((pieceId) => {
+					const p = pieces.find((pp) => pp.id === pieceId);
+					if (p) {
+						const newRow = p.position.row + rowOffset;
+						const newCol = p.position.col + colOffset;
+
+						// 检查边界
+						if (newRow < 0 || newRow >= config.rows || newCol < 0 || newCol >= config.cols) {
+							console.log('[Puzzler] Group 移动后超出边界，拒绝');
+							// 清理状态
+							cleanup();
+							return;
+						}
+
+						groupPiecesAfter.add(`${newRow},${newCol}`);
+					}
+				});
+
+				// 计算空出来的位置
+				const emptyPositions: Position[] = [];
+				groupPiecesBefore.forEach((posStr) => {
+					if (!groupPiecesAfter.has(posStr)) {
+						const [row, col] = posStr.split(',').map(Number);
+						emptyPositions.push({ row, col });
+					}
+				});
+
+				// 计算被挤占的 pieces
+				const displacedPieces: Piece[] = [];
+				groupPiecesAfter.forEach((posStr) => {
+					if (!groupPiecesBefore.has(posStr)) {
+						const [row, col] = posStr.split(',').map(Number);
+						const p = pieces.find((pp) => pp.position.row === row && pp.position.col === col && !group.pieces.includes(pp.id));
+						if (p) {
+							displacedPieces.push(p);
+						}
+					}
+				});
+
+				// 验证合法性
+				if (displacedPieces.length !== emptyPositions.length) {
+					console.log('[Puzzler] 被挤占的 pieces 数量与空位置数量不匹配，拒绝');
+					// 清理状态
+					cleanup();
+					return;
+				}
+
+				// 排序
+				displacedPieces.sort((a, b) => {
+					if (a.position.row !== b.position.row) {
+						return a.position.row - b.position.row;
+					}
+					return a.position.col - b.position.col;
+				});
+
+				emptyPositions.sort((a, b) => {
+					if (a.row !== b.row) {
+						return a.row - b.row;
+					}
+					return a.col - b.col;
+				});
+
+				// 执行移动
+				setPieces((prevPieces) => {
+					const updated = prevPieces.map((p) => {
+						// 1. 移动 group 内的 pieces
+						if (group.pieces.includes(p.id)) {
+							const newRow = p.position.row + rowOffset;
+							const newCol = p.position.col + colOffset;
+							return { ...p, position: { row: newRow, col: newCol } };
+						}
+
+						// 2. 移动被挤占的 pieces 到空位置
+						const displacedIndex = displacedPieces.findIndex((dp) => dp.id === p.id);
+						if (displacedIndex !== -1) {
+							const targetPos = emptyPositions[displacedIndex];
+							return { ...p, position: { row: targetPos.row, col: targetPos.col } };
+						}
+
+						return p;
+					});
+
+					// 检查是否胜利
+					const allCorrect = updated.every((p) => p.position.row === p.originalPosition.row && p.position.col === p.originalPosition.col);
+
+					if (allCorrect) {
+						setGameWon(true);
+						console.log('[Puzzler] 游戏胜利！');
+					}
+
+					return updated;
+				});
+
+				console.log('[Puzzler] 触摸拖动完成 - Group:', groupId);
+			} else {
+				// 处理单个 piece 的触摸拖动结束
+				const endPiece = getPieceAtCell(endCell);
+				if (!endPiece || endPiece.id === touchDraggingPiece) {
+					console.log('[Puzzler] 触摸拖动：目标位置无效或相同，忽略');
+					// 清理状态
+					cleanup();
+					return;
+				}
+
+				// 交换两个拼图块
+				swapPieces(touchDraggingPiece, endPiece.id);
+				console.log('[Puzzler] 触摸拖动完成 - 交换:', touchDraggingPiece, '和', endPiece.id);
+			}
+
+			// 清理状态
+			cleanup();
+		},
+		[
+			touchDraggingPiece,
+			touchStartCell,
+			touchStartPosition,
+			getCellFromTouch,
+			getPieceAtCell,
+			getPieceGroupId,
+			getAllGroups,
+			pieces,
+			difficulty,
+			swapPieces,
+		]
+	);
+
+	/**
+	 * 清理所有触摸状态
+	 */
+	const clearTouchState = useCallback(() => {
+		console.log('[Puzzler] 清理触摸状态');
+		setTouchDraggingPiece(null);
+		setTouchStartCell(null);
+		setTouchStartPosition(null);
+		setTouchCurrentCell(null);
+	}, []);
+
+	/**
+	 * 处理触摸取消
+	 */
+	const handleTouchCancel = useCallback(() => {
+		console.log('[Puzzler] 触摸取消');
+		clearTouchState();
+	}, [clearTouchState]);
+
 	// 初始化游戏
 	useEffect(() => {
 		initNewGame();
 	}, []);
+
+	// 添加全局触摸取消处理，防止状态卡住
+	useEffect(() => {
+		const handleGlobalTouchEnd = () => {
+			// 如果触摸结束但还有触摸状态，清理它
+			if (touchDraggingPiece !== null) {
+				console.log('[Puzzler] 检测到全局触摸结束，清理触摸状态');
+				clearTouchState();
+			}
+		};
+
+		const handleGlobalTouchCancel = () => {
+			// 如果触摸取消但还有触摸状态，清理它
+			if (touchDraggingPiece !== null) {
+				console.log('[Puzzler] 检测到全局触摸取消，清理触摸状态');
+				clearTouchState();
+			}
+		};
+
+		// 监听全局触摸事件
+		document.addEventListener('touchend', handleGlobalTouchEnd, { passive: true });
+		document.addEventListener('touchcancel', handleGlobalTouchCancel, { passive: true });
+
+		return () => {
+			document.removeEventListener('touchend', handleGlobalTouchEnd);
+			document.removeEventListener('touchcancel', handleGlobalTouchCancel);
+		};
+	}, [touchDraggingPiece, clearTouchState]);
 
 	const config = DIFFICULTY_CONFIGS[difficulty];
 	const imageUrl = getImageUrl(currentImage);
@@ -760,6 +1161,10 @@ export default function Puzzler() {
 							}
 						}
 					}}
+					onTouchStart={handleTouchStart}
+					onTouchMove={handleTouchMove}
+					onTouchEnd={handleTouchEnd}
+					onTouchCancel={handleTouchCancel}
 				>
 					{/* 渲染 bounding boxes（包含 grouped pieces） */}
 					{Array.from(getAllGroups().entries()).map(
@@ -852,14 +1257,30 @@ export default function Puzzler() {
 										// 检查当前 piece 是否在 dragging group 中
 										const isInDraggingGroup = dragStartCell !== null && draggingPiece !== null && group.pieces.includes(draggingPiece);
 
+										// 检查当前 piece 是否在触摸拖动的 group 中
+										const isInTouchDraggingGroup =
+											touchStartCell !== null && touchDraggingPiece !== null && group.pieces.includes(touchDraggingPiece);
+
+										// 检查当前 piece 是否正在被触摸拖动
+										const isTouchDragging = touchDraggingPiece === pieceId || isInTouchDraggingGroup;
+
+										// 检查当前 cell 是否是触摸拖动预览位置（对于 bounding box 内的 piece，需要检查整个 group）
+										const isTouchPreviewCell =
+											touchCurrentCell !== null &&
+											touchDraggingPiece !== null &&
+											piece.position.row === touchCurrentCell.row &&
+											piece.position.col === touchCurrentCell.col &&
+											!group.pieces.includes(touchDraggingPiece) &&
+											!isInTouchDraggingGroup;
+
 										return (
 											<div
 												key={pieceId}
 												className={`puzzler-piece puzzler-piece-in-bounding-box ${isInHoveredGroup ? 'puzzler-piece-hovered' : ''} ${
-													isInDraggingGroup ? 'puzzler-piece-dragging' : ''
-												} ${isGroupedTop ? 'puzzler-piece-grouped-top' : ''} ${isGroupedRight ? 'puzzler-piece-grouped-right' : ''} ${
-													isGroupedBottom ? 'puzzler-piece-grouped-bottom' : ''
-												} ${isGroupedLeft ? 'puzzler-piece-grouped-left' : ''}`}
+													isInDraggingGroup || isTouchDragging ? 'puzzler-piece-dragging' : ''
+												} ${isTouchPreviewCell ? 'puzzler-piece-touch-preview' : ''} ${isGroupedTop ? 'puzzler-piece-grouped-top' : ''} ${
+													isGroupedRight ? 'puzzler-piece-grouped-right' : ''
+												} ${isGroupedBottom ? 'puzzler-piece-grouped-bottom' : ''} ${isGroupedLeft ? 'puzzler-piece-grouped-left' : ''}`}
 												style={{
 													position: 'absolute',
 													left: `${relativeCol * cellWidthPercent}%`,
@@ -1048,6 +1469,22 @@ export default function Puzzler() {
 						const isInDraggingGroup =
 							dragStartCell !== null && draggingPiece !== null && getGroupedPieces(draggingPiece).includes(piece.id);
 
+						// 检查当前 piece 是否在触摸拖动的 group 中
+						const isInTouchDraggingGroup =
+							touchStartCell !== null && touchDraggingPiece !== null && getGroupedPieces(touchDraggingPiece).includes(piece.id);
+
+						// 检查当前 piece 是否正在被触摸拖动
+						const isTouchDragging = touchDraggingPiece === piece.id || isInTouchDraggingGroup;
+
+						// 检查当前 cell 是否是触摸拖动预览位置
+						const isTouchPreviewCell =
+							touchCurrentCell !== null &&
+							touchDraggingPiece !== null &&
+							piece.position.row === touchCurrentCell.row &&
+							piece.position.col === touchCurrentCell.col &&
+							piece.id !== touchDraggingPiece &&
+							!isInTouchDraggingGroup;
+
 						const innerStyle: React.CSSProperties = {
 							width: '100%',
 							height: '100%',
@@ -1066,11 +1503,13 @@ export default function Puzzler() {
 						return (
 							<div
 								key={piece.id}
-								className={`puzzler-piece ${draggingPiece === piece.id || isInDraggingGroup ? 'puzzler-piece-dragging' : ''} ${
-									isInHoveredGroup ? 'puzzler-piece-hovered' : ''
-								} ${isGroupedTop ? 'puzzler-piece-grouped-top' : ''} ${isGroupedRight ? 'puzzler-piece-grouped-right' : ''} ${
-									isGroupedBottom ? 'puzzler-piece-grouped-bottom' : ''
-								} ${isGroupedLeft ? 'puzzler-piece-grouped-left' : ''}`}
+								className={`puzzler-piece ${
+									draggingPiece === piece.id || isInDraggingGroup || isTouchDragging ? 'puzzler-piece-dragging' : ''
+								} ${isInHoveredGroup ? 'puzzler-piece-hovered' : ''} ${isTouchPreviewCell ? 'puzzler-piece-touch-preview' : ''} ${
+									isGroupedTop ? 'puzzler-piece-grouped-top' : ''
+								} ${isGroupedRight ? 'puzzler-piece-grouped-right' : ''} ${isGroupedBottom ? 'puzzler-piece-grouped-bottom' : ''} ${
+									isGroupedLeft ? 'puzzler-piece-grouped-left' : ''
+								}`}
 								style={tileStyle}
 								draggable={!isGrouped}
 								onDragStart={(e) => handleDragStart(e, piece.id)}
