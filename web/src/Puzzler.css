@@ -163,44 +163,23 @@
 	z-index: 2; /* 高于 bounding box，确保可以接收鼠标事件 */
 }
 
-/* 当 piece 在 hovered group 中时，根据相邻关系移除内部边界的 border-radius */
-.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-top {
+/* 当 piece 是 grouped 时（静态、hover 或 dragging），根据相邻关系移除内部边界的 border-radius */
+.puzzler-piece.puzzler-piece-grouped-top {
 	border-top-left-radius: 0;
 	border-top-right-radius: 0;
 }
 
-.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-right {
+.puzzler-piece.puzzler-piece-grouped-right {
 	border-top-right-radius: 0;
 	border-bottom-right-radius: 0;
 }
 
-.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-bottom {
+.puzzler-piece.puzzler-piece-grouped-bottom {
 	border-bottom-left-radius: 0;
 	border-bottom-right-radius: 0;
 }
 
-.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-left {
-	border-top-left-radius: 0;
-	border-bottom-left-radius: 0;
-}
-
-/* 当 piece 在 dragging group 中时，同样移除内部边界的 border-radius */
-.puzzler-piece-dragging.puzzler-piece-grouped-top {
-	border-top-left-radius: 0;
-	border-top-right-radius: 0;
-}
-
-.puzzler-piece-dragging.puzzler-piece-grouped-right {
-	border-top-right-radius: 0;
-	border-bottom-right-radius: 0;
-}
-
-.puzzler-piece-dragging.puzzler-piece-grouped-bottom {
-	border-bottom-left-radius: 0;
-	border-bottom-right-radius: 0;
-}
-
-.puzzler-piece-dragging.puzzler-piece-grouped-left {
+.puzzler-piece.puzzler-piece-grouped-left {
 	border-top-left-radius: 0;
 	border-bottom-left-radius: 0;
 }
@@ -238,7 +217,6 @@
 .puzzler-piece:hover,
 .puzzler-piece.puzzler-piece-hovered {
 	/* 使用伪元素显示边框，不影响内部元素尺寸 */
-	box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
 	z-index: 10;
 }
 
@@ -254,23 +232,54 @@
 	border-radius: 4px;
 	pointer-events: none;
 	z-index: 2;
+	/* 添加 box-shadow 到伪元素上，而不是父元素 */
+	box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
 }
 
-/* 隐藏相邻 grouped piece 之间的内部边界 */
+/* 隐藏相邻 grouped piece 之间的内部边界（hover 时） */
+.puzzler-piece:hover.puzzler-piece-grouped-top::before,
 .puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-top::before {
 	border-top: none;
+	/* 移除顶部边界的 box-shadow */
+	box-shadow: 0 2px 8px rgba(102, 126, 234, 0.5);
 }
 
+.puzzler-piece:hover.puzzler-piece-grouped-right::before,
 .puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-right::before {
 	border-right: none;
+	/* 移除右侧边界的 box-shadow */
+	box-shadow: -2px 0 8px rgba(102, 126, 234, 0.5);
 }
 
+.puzzler-piece:hover.puzzler-piece-grouped-bottom::before,
 .puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-bottom::before {
 	border-bottom: none;
+	/* 移除底部边界的 box-shadow */
+	box-shadow: 0 -2px 8px rgba(102, 126, 234, 0.5);
 }
 
+.puzzler-piece:hover.puzzler-piece-grouped-left::before,
 .puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-left::before {
 	border-left: none;
+	/* 移除左侧边界的 box-shadow */
+	box-shadow: 2px 0 8px rgba(102, 126, 234, 0.5);
+}
+
+/* 当 piece 同时有多个 grouped 方向时，组合 box-shadow */
+.puzzler-piece:hover.puzzler-piece-grouped-top.puzzler-piece-grouped-bottom::before,
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-top.puzzler-piece-grouped-bottom::before {
+	box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
+}
+
+.puzzler-piece:hover.puzzler-piece-grouped-left.puzzler-piece-grouped-right::before,
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-left.puzzler-piece-grouped-right::before {
+	box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
+}
+
+/* 当 piece 有四个方向都是 grouped 时（完全被包围），不显示任何边框和阴影 */
+.puzzler-piece:hover.puzzler-piece-grouped-top.puzzler-piece-grouped-right.puzzler-piece-grouped-bottom.puzzler-piece-grouped-left::before,
+.puzzler-piece.puzzler-piece-hovered.puzzler-piece-grouped-top.puzzler-piece-grouped-right.puzzler-piece-grouped-bottom.puzzler-piece-grouped-left::before {
+	display: none;
 }
 
 .puzzler-piece-dragging {

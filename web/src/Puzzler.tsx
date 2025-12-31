@@ -1046,32 +1046,6 @@ export default function Puzzler() {
 						// 检查当前图块是否在 hovered group 中
 						const isInHoveredGroup = hoveredPiece !== null && getGroupedPieces(hoveredPiece).includes(piece.id);
 
-						// 检查相邻的 grouped piece 是否也在 hovered group 中
-						// 如果是，则隐藏相邻的边
-						const isAdjacentInHoveredGroup = (direction: 'top' | 'right' | 'bottom' | 'left'): boolean => {
-							if (!isInHoveredGroup) return false;
-
-							let adjacentRow = piece.position.row;
-							let adjacentCol = piece.position.col;
-
-							if (direction === 'top') adjacentRow--;
-							else if (direction === 'bottom') adjacentRow++;
-							else if (direction === 'left') adjacentCol--;
-							else if (direction === 'right') adjacentCol++;
-
-							const adjacentPiece = pieces.find((p) => p.position.row === adjacentRow && p.position.col === adjacentCol);
-
-							if (!adjacentPiece) return false;
-
-							// 检查相邻图块是否也在 hovered group 中
-							return hoveredPiece !== null && getGroupedPieces(hoveredPiece).includes(adjacentPiece.id);
-						};
-
-						const isGroupedTopInHovered = isAdjacentInHoveredGroup('top');
-						const isGroupedRightInHovered = isAdjacentInHoveredGroup('right');
-						const isGroupedBottomInHovered = isAdjacentInHoveredGroup('bottom');
-						const isGroupedLeftInHovered = isAdjacentInHoveredGroup('left');
-
 						// 检查当前 piece 是否在 dragging group 中（用于移除内部边界的 border-radius）
 						const isInDraggingGroup =
 							dragStartCell !== null && draggingPiece !== null && getGroupedPieces(draggingPiece).includes(piece.id);
@@ -1091,22 +1065,14 @@ export default function Puzzler() {
 						if (isGroupedBottom) tileStyle.marginBottom = '-2px';
 						if (isGroupedLeft) tileStyle.marginLeft = '-2px';
 
-						// 检查在 dragging group 中时，哪些边界应该移除 border-radius
-						const isGroupedTopInDragging = isInDraggingGroup && isGroupedTop;
-						const isGroupedRightInDragging = isInDraggingGroup && isGroupedRight;
-						const isGroupedBottomInDragging = isInDraggingGroup && isGroupedBottom;
-						const isGroupedLeftInDragging = isInDraggingGroup && isGroupedLeft;
-
 						return (
 							<div
 								key={piece.id}
 								className={`puzzler-piece ${draggingPiece === piece.id || isInDraggingGroup ? 'puzzler-piece-dragging' : ''} ${
 									isInHoveredGroup ? 'puzzler-piece-hovered' : ''
-								} ${isGroupedTopInHovered || isGroupedTopInDragging ? 'puzzler-piece-grouped-top' : ''} ${
-									isGroupedRightInHovered || isGroupedRightInDragging ? 'puzzler-piece-grouped-right' : ''
-								} ${isGroupedBottomInHovered || isGroupedBottomInDragging ? 'puzzler-piece-grouped-bottom' : ''} ${
-									isGroupedLeftInHovered || isGroupedLeftInDragging ? 'puzzler-piece-grouped-left' : ''
-								}`}
+								} ${isGroupedTop ? 'puzzler-piece-grouped-top' : ''} ${isGroupedRight ? 'puzzler-piece-grouped-right' : ''} ${
+									isGroupedBottom ? 'puzzler-piece-grouped-bottom' : ''
+								} ${isGroupedLeft ? 'puzzler-piece-grouped-left' : ''}`}
 								style={tileStyle}
 								draggable={!isGrouped}
 								onDragStart={(e) => handleDragStart(e, piece.id)}
