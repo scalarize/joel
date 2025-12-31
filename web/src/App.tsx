@@ -335,11 +335,7 @@ function App() {
 						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
 				) : path === '/mini-games/puzzler' ? (
-					user ? (
-						<Puzzler />
-					) : (
-						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
-					)
+					<Puzzler />
 				) : path === '/admin' || path === '/admin/dashboard' || path === '/admin/users' ? (
 					user ? (
 						<Admin />
@@ -603,7 +599,12 @@ function Dashboard({
 			return false; // 非管理员不能访问
 		}
 
-		// favor、gd、discover 和 mini-games 需要检查授权
+		// mini-games 模块所有已登录用户可访问（不需要检查授权）
+		if (module.id === 'mini-games') {
+			return true;
+		}
+
+		// favor、gd、discover 需要检查授权
 		if (modulePermissions && modulePermissions[module.id] === true) {
 			return true;
 		}

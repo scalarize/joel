@@ -630,6 +630,11 @@ export async function hasModulePermission(db: D1Database, userId: string, module
 		return false; // 非管理员不能访问
 	}
 
+	// mini-games 模块所有已登录用户可访问（不需要检查授权）
+	if (moduleId === 'mini-games') {
+		return true;
+	}
+
 	// 需要权限授权的模块需要检查授权（使用全局配置）
 	const { isPermissionRequiredModule } = await import('../modules');
 	if (isPermissionRequiredModule(moduleId)) {
