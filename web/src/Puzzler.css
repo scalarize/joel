@@ -160,6 +160,7 @@
 	cursor: move;
 	user-select: none;
 	transition: transform 0.2s, box-shadow 0.2s;
+	z-index: 2; /* 高于 bounding box，确保可以接收鼠标事件 */
 }
 
 .puzzler-piece-inner {
@@ -178,10 +179,9 @@
 	position: relative;
 	/* 完全透明，只用于拖拽逻辑 */
 	background: transparent;
-	cursor: move;
-	z-index: 1; /* 低于单独 pieces，但可拖拽 */
-	/* 确保 bounding box 可以接收鼠标事件 */
-	pointer-events: auto;
+	z-index: 0; /* 最低层，让事件穿透 */
+	/* 默认不接收鼠标事件，让事件穿透到下层 pieces */
+	pointer-events: none;
 	/* 作为容器，包含内部的 pieces */
 	overflow: visible;
 }
@@ -211,7 +211,7 @@
 	border: 2px solid #667eea;
 	border-radius: 4px;
 	pointer-events: none;
-	z-index: 1;
+	z-index: 2;
 }
 
 /* 隐藏相邻 grouped piece 之间的内部边界 */

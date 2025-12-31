@@ -346,12 +346,43 @@ export default function Puzzler() {
 
 			// 如果点击位置不属于 group 内的任何 piece，阻止拖拽
 			if (!groupPiecesPositions.has(clickPosition)) {
-				console.log('[Puzzler] Drag Start: 点击位置不在 group 的实际 pieces 上，阻止拖拽');
+				console.log('[Puzzler] handleBoundingBoxDragStart: 点击位置不在 group 的实际 pieces 上，阻止拖拽');
 				e.preventDefault();
 				return;
 			}
 
 			e.dataTransfer.effectAllowed = 'move';
+
+			// 创建自定义拖拽图像：显示整个 group
+			// 找到 bounding box 对应的 DOM 元素（e.currentTarget 是触发事件的 piece，其父元素是 bounding box）
+			const boundingBoxElement = (e.currentTarget as HTMLElement).parentElement;
+			if (boundingBoxElement && boundingBoxElement.classList.contains('puzzler-bounding-box')) {
+				// 创建一个临时元素来克隆整个 bounding box 的内容
+				const dragImage = boundingBoxElement.cloneNode(true) as HTMLElement;
+				dragImage.style.position = 'absolute';
+				dragImage.style.top = '-9999px';
+				dragImage.style.left = '-9999px';
+				dragImage.style.opacity = '0.8';
+				dragImage.style.pointerEvents = 'none';
+				dragImage.style.width = `${boundingBoxElement.getBoundingClientRect().width}px`;
+				dragImage.style.height = `${boundingBoxElement.getBoundingClientRect().height}px`;
+				document.body.appendChild(dragImage);
+
+				// 计算鼠标相对于 bounding box 的偏移
+				const boundingBoxRect = boundingBoxElement.getBoundingClientRect();
+				const offsetX = e.clientX - boundingBoxRect.left;
+				const offsetY = e.clientY - boundingBoxRect.top;
+
+				// 设置拖拽图像
+				e.dataTransfer.setDragImage(dragImage, offsetX, offsetY);
+
+				// 在拖拽结束后清理临时元素
+				setTimeout(() => {
+					if (document.body.contains(dragImage)) {
+						document.body.removeChild(dragImage);
+					}
+				}, 0);
+			}
 
 			console.log('[Puzzler] Drag Start:', {
 				groupId,
@@ -393,8 +424,10 @@ export default function Puzzler() {
 
 			e.dataTransfer.effectAllowed = 'move';
 			setDraggingPiece(pieceId);
+			console.log('[Puzzler] handleDragStart: draggingPiece set to', pieceId);
 
 			if (!gameStarted) {
+				console.log('[Puzzler] handleDragStart: gameStarted set to true');
 				setGameStarted(true);
 			}
 		},
@@ -447,6 +480,12 @@ export default function Puzzler() {
 			// 计算偏移量：drop 位置相对于鼠标点击位置的偏移
 			const rowOffset = dropRow - dragStartCell.row;
 			const colOffset = dropCol - dragStartCell.col;
+			if (rowOffset === 0 && colOffset === 0) {
+				console.log('[Puzzler] Drop: no actual moving, ignore');
+				setDraggingPiece(null);
+				setDragStartCell(null);
+				return;
+			}
 
 			console.log('[Puzzler] Drop:', {
 				groupId,
@@ -605,6 +644,7 @@ export default function Puzzler() {
 	 * 处理拖拽结束
 	 */
 	const handleDragEnd = useCallback(() => {
+		console.log('[Puzzler] handleDragEnd: draggingPiece set to null');
 		setDraggingPiece(null);
 	}, []);
 
@@ -713,7 +753,8 @@ export default function Puzzler() {
 								});
 							});
 
-							if (draggedGroup) {
+							if (draggedGroup && draggedGroup[1].pieces.length > 1) {
+								e.stopPropagation();
 								handleBoundingBoxDrop(e, draggedGroup[0]);
 								return;
 							}
@@ -733,55 +774,30 @@ export default function Puzzler() {
 								<div
 									key={groupId}
 									className="puzzler-bounding-box"
+									data-group-id={groupId}
 									style={{
 										gridRow: `${group.boundingBox.minRow + 1} / span ${boundingBoxRows}`,
 										gridColumn: `${group.boundingBox.minCol + 1} / span ${boundingBoxCols}`,
+										pointerEvents: 'none', // 默认让事件穿透，只在内部 group pieces 位置接收事件
 									}}
-									draggable
-									onDragStart={(e) => handleBoundingBoxDragStart(e, groupId)}
-									onDragEnd={handleBoundingBoxDragEnd}
-									onDrop={(e) => {
-										e.preventDefault();
-
-										// 检查 drop 位置是否真的属于 group 内的某个 piece
-										if (!puzzleAreaRef.current) {
-											e.stopPropagation();
-											return;
+									onMouseLeave={(e) => {
+										// 当鼠标离开整个 bounding box 时，检查是否真的离开了 group
+										const relatedTarget = e.relatedTarget as HTMLElement;
+										if (!relatedTarget || !relatedTarget.closest(`[data-group-id="${groupId}"]`)) {
+											// 使用 setTimeout 延迟清除，避免快速移动时闪烁
+											setTimeout(() => {
+												// 再次检查鼠标是否真的离开了 group
+												const activeElement = document.elementFromPoint(e.clientX, e.clientY);
+												if (activeElement) {
+													const stillInGroup = activeElement.closest(`[data-group-id="${groupId}"]`);
+													if (!stillInGroup) {
+														setHoveredPiece(null);
+													}
+												} else {
+													setHoveredPiece(null);
+												}
+											}, 10);
 										}
-
-										const rect = puzzleAreaRef.current.getBoundingClientRect();
-										const config = DIFFICULTY_CONFIGS[difficulty];
-										const cellWidth = rect.width / config.cols;
-										const cellHeight = rect.height / config.rows;
-
-										const mouseX = e.clientX - rect.left;
-										const mouseY = e.clientY - rect.top;
-										const dropCol = Math.floor(mouseX / cellWidth);
-										const dropRow = Math.floor(mouseY / cellHeight);
-
-										// 检查 drop 位置是否属于 group 内的某个 piece
-										const dropPosition = `${dropRow},${dropCol}`;
-										const groupPiecesPositions = new Set<string>();
-										group.pieces.forEach((pieceId) => {
-											const piece = pieces.find((p) => p.id === pieceId);
-											if (piece) {
-												groupPiecesPositions.add(`${piece.position.row},${piece.position.col}`);
-											}
-										});
-
-										// 如果 drop 位置不属于 group 内的任何 piece，让事件冒泡
-										if (!groupPiecesPositions.has(dropPosition)) {
-											console.log('[Puzzler] Drop 位置不在 group 的实际 pieces 上，让事件冒泡');
-											return; // 不阻止冒泡，让 puzzler-area 处理
-										}
-
-										e.stopPropagation(); // 阻止事件冒泡，避免触发 puzzler-area 的 onDrop
-										handleBoundingBoxDrop(e, groupId);
-									}}
-									onDragOver={(e) => {
-										e.preventDefault();
-										e.stopPropagation(); // 阻止事件冒泡
-										e.dataTransfer.dropEffect = 'move';
 									}}
 								>
 									{/* 在 bounding box 内渲染所有 grouped pieces */}
@@ -810,16 +826,97 @@ export default function Puzzler() {
 										const cellWidthPercent = 100 / boundingBoxCols;
 										const cellHeightPercent = 100 / boundingBoxRows;
 
+										// 检查相邻的 grouped piece 是否也在同一个 group 中
+										// 用于判断哪些边界应该隐藏（内部边界）
+										const checkAdjacentInGroup = (direction: 'top' | 'right' | 'bottom' | 'left'): boolean => {
+											let adjacentRow = piece.position.row;
+											let adjacentCol = piece.position.col;
+
+											if (direction === 'top') adjacentRow--;
+											else if (direction === 'bottom') adjacentRow++;
+											else if (direction === 'left') adjacentCol--;
+											else if (direction === 'right') adjacentCol++;
+
+											const adjacentPiece = pieces.find((p) => p.position.row === adjacentRow && p.position.col === adjacentCol);
+											return adjacentPiece !== undefined && group.pieces.includes(adjacentPiece.id);
+										};
+
+										const isGroupedTop = checkAdjacentInGroup('top');
+										const isGroupedRight = checkAdjacentInGroup('right');
+										const isGroupedBottom = checkAdjacentInGroup('bottom');
+										const isGroupedLeft = checkAdjacentInGroup('left');
+
+										// 检查当前 piece 是否在 hovered group 中
+										const isInHoveredGroup = hoveredPiece !== null && group.pieces.includes(hoveredPiece);
+
 										return (
 											<div
 												key={pieceId}
-												className="puzzler-piece puzzler-piece-in-bounding-box"
+												className={`puzzler-piece puzzler-piece-in-bounding-box ${isInHoveredGroup ? 'puzzler-piece-hovered' : ''} ${
+													isGroupedTop && isInHoveredGroup ? 'puzzler-piece-grouped-top' : ''
+												} ${isGroupedRight && isInHoveredGroup ? 'puzzler-piece-grouped-right' : ''} ${
+													isGroupedBottom && isInHoveredGroup ? 'puzzler-piece-grouped-bottom' : ''
+												} ${isGroupedLeft && isInHoveredGroup ? 'puzzler-piece-grouped-left' : ''}`}
 												style={{
 													position: 'absolute',
 													left: `${relativeCol * cellWidthPercent}%`,
 													top: `${relativeRow * cellHeightPercent}%`,
 													width: `${cellWidthPercent}%`,
 													height: `${cellHeightPercent}%`,
+													pointerEvents: 'auto', // 在 group pieces 位置接收鼠标事件
+													zIndex: 1, // 确保在 bounding box 之上
+												}}
+												draggable
+												onDragStart={(e) => handleBoundingBoxDragStart(e, groupId)}
+												onDragEnd={handleBoundingBoxDragEnd}
+												onDrop={(e) => {
+													e.preventDefault();
+													e.stopPropagation();
+													handleBoundingBoxDrop(e, groupId);
+												}}
+												onDragOver={(e) => {
+													e.preventDefault();
+													e.stopPropagation();
+													e.dataTransfer.dropEffect = 'move';
+												}}
+												onMouseEnter={() => {
+													// 当 hover 到 group 内的任意 piece 时，设置 hoveredPiece 为该 group 的第一个 piece
+													// 这样所有 group 内的 pieces 都会显示 hover 效果
+													if (group.pieces.length > 0) {
+														setHoveredPiece(group.pieces[0]);
+													}
+												}}
+												onMouseLeave={(e) => {
+													// 检查鼠标是否移动到了 group 内的另一个 piece 上
+													// 如果移动到 group 内的另一个 piece，不清除 hover
+													const relatedTarget = e.relatedTarget as HTMLElement;
+													if (relatedTarget) {
+														// 检查 relatedTarget 是否是同一个 bounding box 内的 piece
+														const boundingBox = relatedTarget.closest('.puzzler-bounding-box');
+														if (boundingBox && boundingBox.getAttribute('data-group-id') === groupId) {
+															// 鼠标移动到了同一个 group 内的另一个 piece，不清除 hover
+															return;
+														}
+														// 检查 relatedTarget 是否是同一个 group 内的另一个 piece（通过检查其父元素）
+														const pieceElement = relatedTarget.closest('.puzzler-piece-in-bounding-box');
+														if (pieceElement && pieceElement.parentElement?.getAttribute('data-group-id') === groupId) {
+															// 鼠标移动到了同一个 group 内的另一个 piece，不清除 hover
+															return;
+														}
+													}
+													// 使用 setTimeout 延迟清除，避免快速移动时闪烁
+													setTimeout(() => {
+														// 再次检查鼠标是否真的离开了 group
+														const activeElement = document.elementFromPoint(e.clientX, e.clientY);
+														if (activeElement) {
+															const stillInGroup = activeElement.closest(`[data-group-id="${groupId}"]`);
+															if (!stillInGroup) {
+																setHoveredPiece(null);
+															}
+														} else {
+															setHoveredPiece(null);
+														}
+													}, 10);
 												}}
 											>
 												<div className="puzzler-piece-inner" style={innerStyle} />
