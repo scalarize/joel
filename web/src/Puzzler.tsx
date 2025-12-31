@@ -892,10 +892,26 @@ export default function Puzzler() {
 														return;
 													}
 
-													// 如果是 group 的拖拽，处理 group drop
+													// 如果是 group 的拖拽，找到被拖拽的 group 并处理 drop
 													if (dragStartCell !== null) {
-														e.stopPropagation();
-														handleBoundingBoxDrop(e, groupId);
+														// 找到被拖拽的 group（通过 dragStartCell 找到对应的 piece，再找到该 piece 所属的 group）
+														const allGroups = getAllGroups();
+														const draggedGroup = Array.from(allGroups.entries()).find(([_, group]) => {
+															return group.pieces.some((pieceId) => {
+																const piece = pieces.find((p) => p.id === pieceId);
+																return piece && piece.position.row === dragStartCell.row && piece.position.col === dragStartCell.col;
+															});
+														});
+
+														// 如果找到了被拖拽的 group，处理 drop（handleBoundingBoxDrop 会检查边界和有效性）
+														if (draggedGroup) {
+															e.stopPropagation();
+															handleBoundingBoxDrop(e, draggedGroup[0]);
+														} else {
+															// 没找到被拖拽的 group，让事件冒泡到 puzzler-area 处理
+															console.log('[Puzzler] 未找到被拖拽的 group，让事件冒泡');
+															return;
+														}
 													}
 												}}
 												onDragOver={(e) => {
