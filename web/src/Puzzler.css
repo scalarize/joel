@@ -535,6 +535,70 @@
 	border-top: 2px solid #e0e0e0;
 }
 
+/* 图片查看浮层 */
+.puzzler-gallery-viewer {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.9);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 1000;
+	animation: fadeIn 0.2s;
+}
+
+.puzzler-gallery-viewer-content {
+	position: relative;
+	max-width: 90vw;
+	max-height: 90vh;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+}
+
+.puzzler-gallery-viewer-content img {
+	max-width: 100%;
+	max-height: 80vh;
+	object-fit: contain;
+	border-radius: 8px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.puzzler-gallery-viewer-close {
+	position: absolute;
+	top: -40px;
+	right: 0;
+	width: 36px;
+	height: 36px;
+	border: none;
+	background: rgba(255, 255, 255, 0.2);
+	color: white;
+	font-size: 28px;
+	font-weight: bold;
+	border-radius: 50%;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s;
+	line-height: 1;
+}
+
+.puzzler-gallery-viewer-close:hover {
+	background: rgba(255, 255, 255, 0.3);
+	transform: scale(1.1);
+}
+
+.puzzler-gallery-viewer-info {
+	color: white;
+	font-size: 16px;
+	text-align: center;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
 	.puzzler {

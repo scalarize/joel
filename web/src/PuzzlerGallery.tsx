@@ -49,6 +49,8 @@ export default function PuzzlerGallery() {
 	const [uploading, setUploading] = useState(false);
 	const [uploadMode, setUploadMode] = useState<'file' | 'url' | null>(null);
 	const [uploadUrl, setUploadUrl] = useState('');
+	const [viewingImageId, setViewingImageId] = useState<number | null>(null);
+	const [filter, setFilter] = useState<'all' | 'available'>('all');
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	/**
@@ -95,7 +97,7 @@ export default function PuzzlerGallery() {
 	const TARGET_WIDTH = 1600;
 	const TARGET_HEIGHT = 900;
 	const TARGET_ASPECT_RATIO = 16 / 9; // 1.777...
-	const ASPECT_TOLERANCE = 0.2; // 允许的宽高比误差（20%）
+	const ASPECT_TOLERANCE = 0.28; // 允许的宽高比误差（28%）
 
 	/**
 	 * 检查宽高比是否接近 16:9
@@ -337,6 +339,24 @@ export default function PuzzlerGallery() {
 		loadManifest();
 	}, [loadManifest]);
 
+	// ESC 键关闭浮层
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape' && viewingImageId !== null) {
+				setViewingImageId(null);
+			}
+		};
+		window.addEventListener('keydown', handleKeyDown);
+		return () => {
+			window.removeEventListener('keydown', handleKeyDown);
+		};
+	}, [viewingImageId]);
+
+	// 当 filter 改变时，重置到第一页
+	useEffect(() => {
+		setCurrentPage(1);
+	}, [filter]);
+
 	if (loading) {
 		return (
 			<div className="puzzler-gallery">
@@ -353,17 +373,26 @@ export default function PuzzlerGallery() {
 		);
 	}
 
-	// 计算分页
-	const totalImages = manifest.maxImageId;
-	const totalPages = Math.ceil(totalImages / IMAGES_PER_PAGE);
-	const startId = (currentPage - 1) * IMAGES_PER_PAGE + 1;
-	const endId = Math.min(currentPage * IMAGES_PER_PAGE, totalImages);
-
-	// 生成当前页的图片 ID 列表
-	const imageIds: number[] = [];
-	for (let i = startId; i <= endId; i++) {
-		imageIds.push(i);
+	// 生成所有图片 ID 列表（倒序）
+	const allImageIds: number[] = [];
+	for (let i = manifest.maxImageId; i >= 1; i--) {
+		allImageIds.push(i);
 	}
+
+	// 根据 filter 过滤图片
+	const filteredImageIds = allImageIds.filter((id) => {
+		if (filter === 'available') {
+			return !manifest.disabledImageIds.includes(id);
+		}
+		return true; // 'all' 模式显示所有图片
+	});
+
+	// 计算分页
+	const totalImages = filteredImageIds.length;
+	const totalPages = Math.ceil(totalImages / IMAGES_PER_PAGE);
+	const startIndex = (currentPage - 1) * IMAGES_PER_PAGE;
+	const endIndex = Math.min(startIndex + IMAGES_PER_PAGE, totalImages);
+	const imageIds = filteredImageIds.slice(startIndex, endIndex);
 
 	const r2Url = getR2PublicUrl();
 
@@ -372,7 +401,7 @@ export default function PuzzlerGallery() {
 			<div className="puzzler-gallery-header">
 				<h2>拼图游戏图库管理</h2>
 				<div className="puzzler-gallery-info">
-					<span>总图片数: {totalImages}</span>
+					<span>总图片数: {manifest.maxImageId}</span>
 					<span>已禁用: {manifest.disabledImageIds.length}</span>
 					<span>最后更新: {new Date(manifest.lastUpdate).toLocaleString('zh-CN')}</span>
 				</div>
@@ -384,8 +413,30 @@ export default function PuzzlerGallery() {
 				</div>
 			)}
 
-			{/* 上传区域 */}
-			<div className="puzzler-gallery-upload" style={{ marginBottom: '24px', padding: '16px', background: '#f5f5f5', borderRadius: '8px' }}>
+			{/* 过滤器和上传区域 */}
+			<div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+				{/* 过滤器 */}
+				<div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+					<span style={{ fontSize: '14px', color: '#666' }}>筛选：</span>
+					<button
+						className={`puzzler-btn ${filter === 'all' ? 'puzzler-btn-primary' : 'puzzler-btn-secondary'}`}
+						onClick={() => setFilter('all')}
+					>
+						全部
+					</button>
+					<button
+						className={`puzzler-btn ${filter === 'available' ? 'puzzler-btn-primary' : 'puzzler-btn-secondary'}`}
+						onClick={() => setFilter('available')}
+					>
+						可用
+					</button>
+					<span style={{ fontSize: '14px', color: '#666', marginLeft: '8px' }}>
+						({filter === 'all' ? manifest.maxImageId : filteredImageIds.length} 张)
+					</span>
+				</div>
+
+				{/* 上传区域 */}
+				<div className="puzzler-gallery-upload" style={{ padding: '16px', background: '#f5f5f5', borderRadius: '8px' }}>
 				<div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
 					<button
 						className="puzzler-btn puzzler-btn-secondary"
@@ -449,6 +500,7 @@ export default function PuzzlerGallery() {
 						</div>
 					</div>
 				)}
+				</div>
 			</div>
 
 			<div className="puzzler-gallery-content">
@@ -462,7 +514,11 @@ export default function PuzzlerGallery() {
 								key={imageId}
 								className={`puzzler-gallery-item ${isDisabled ? 'puzzler-gallery-item-disabled' : ''}`}
 							>
-								<div className="puzzler-gallery-item-image">
+								<div
+									className="puzzler-gallery-item-image"
+									onClick={() => setViewingImageId(imageId)}
+									style={{ cursor: 'pointer' }}
+								>
 									<img src={imageUrl} alt={`图片 ${imageId}`} loading="lazy" />
 									{isDisabled && <div className="puzzler-gallery-item-overlay">已禁用</div>}
 								</div>
@@ -509,6 +565,38 @@ export default function PuzzlerGallery() {
 					返回游戏
 				</button>
 			</div>
+
+			{/* 图片查看浮层 */}
+			{viewingImageId !== null && (
+				<div
+					className="puzzler-gallery-viewer"
+					onClick={(e) => {
+						// 点击浮层背景（非图片）时关闭
+						if (e.target === e.currentTarget) {
+							setViewingImageId(null);
+						}
+					}}
+				>
+					<div className="puzzler-gallery-viewer-content">
+						<button
+							className="puzzler-gallery-viewer-close"
+							onClick={() => setViewingImageId(null)}
+							title="关闭 (ESC)"
+						>
+							×
+						</button>
+						<img
+							src={`${r2Url}/mini-games/puzzler/images/${viewingImageId}.jpg`}
+							alt={`图片 ${viewingImageId}`}
+							onClick={(e) => e.stopPropagation()}
+						/>
+						<div className="puzzler-gallery-viewer-info">
+							<span>ID: {viewingImageId}</span>
+							{manifest.disabledImageIds.includes(viewingImageId) && <span style={{ color: '#c00' }}>（已禁用）</span>}
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

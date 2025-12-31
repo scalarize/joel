@@ -108,6 +108,7 @@ export default function Puzzler() {
 	const [touchStartPosition, setTouchStartPosition] = useState<{ x: number; y: number } | null>(null);
 	const [touchCurrentCell, setTouchCurrentCell] = useState<Position | null>(null); // 当前触摸位置对应的 cell，用于显示拖动预览
 	const puzzleAreaRef = useRef<HTMLDivElement>(null);
+	const hasInitializedRef = useRef(false);
 
 	/**
 	 * 获取图片 URL
@@ -1174,10 +1175,11 @@ export default function Puzzler() {
 		loadManifest();
 	}, [loadUser, loadManifest]);
 
-	// 当 manifest 加载完成后，初始化游戏
+	// 当 manifest 加载完成后，初始化游戏（仅在首次加载时）
 	useEffect(() => {
-		if (!manifestLoading && manifest && !manifestError) {
+		if (!manifestLoading && manifest && !manifestError && !hasInitializedRef.current) {
 			initNewGame();
+			hasInitializedRef.current = true;
 		}
 	}, [manifestLoading, manifest, manifestError, initNewGame]);
 
