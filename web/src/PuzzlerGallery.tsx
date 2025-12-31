@@ -3,7 +3,7 @@
  * 路径：/mini-games/puzzler/gallery
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './Puzzler.css';
 
 /**
@@ -46,6 +46,10 @@ export default function PuzzlerGallery() {
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [currentPage, setCurrentPage] = useState(1);
+	const [uploading, setUploading] = useState(false);
+	const [uploadMode, setUploadMode] = useState<'file' | 'url' | null>(null);
+	const [uploadUrl, setUploadUrl] = useState('');
+	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	/**
 	 * 获取带有 JWT token 的请求 headers
@@ -87,6 +91,197 @@ export default function PuzzlerGallery() {
 		}
 	}, []);
 
+	// 图片处理配置（参考 scripts/init-puzzler-images.js）
+	const TARGET_WIDTH = 1600;
+	const TARGET_HEIGHT = 900;
+	const TARGET_ASPECT_RATIO = 16 / 9; // 1.777...
+	const ASPECT_TOLERANCE = 0.2; // 允许的宽高比误差（20%）
+
+	/**
+	 * 检查宽高比是否接近 16:9
+	 */
+	const isAspectRatioClose = useCallback((aspectRatio: number): boolean => {
+		const diff = Math.abs(aspectRatio - TARGET_ASPECT_RATIO);
+		return diff <= ASPECT_TOLERANCE;
+	}, []);
+
+	/**
+	 * 处理图片：检查宽高比并 resize 到 1600x900
+	 */
+	const processImage = useCallback(
+		async (imageFile: File | string): Promise<Blob> => {
+			return new Promise((resolve, reject) => {
+				const img = new Image();
+				img.crossOrigin = 'anonymous';
+
+				img.onload = () => {
+					const { width, height } = img;
+					const aspectRatio = width / height;
+
+					// 检查宽高比
+					if (!isAspectRatioClose(aspectRatio)) {
+						reject(new Error(`图片宽高比不符合要求: ${aspectRatio.toFixed(2)}，需要接近 16:9 (${TARGET_ASPECT_RATIO.toFixed(2)})`));
+						return;
+					}
+
+					// 创建 Canvas，使用 cover 模式（保持宽高比，裁剪多余部分）
+					const canvas = document.createElement('canvas');
+					canvas.width = TARGET_WIDTH;
+					canvas.height = TARGET_HEIGHT;
+					const ctx = canvas.getContext('2d');
+					if (!ctx) {
+						reject(new Error('无法创建 Canvas 上下文'));
+						return;
+					}
+
+					// 计算缩放和裁剪参数（cover 模式）
+					const scale = Math.max(TARGET_WIDTH / width, TARGET_HEIGHT / height);
+					const scaledWidth = width * scale;
+					const scaledHeight = height * scale;
+					const x = (TARGET_WIDTH - scaledWidth) / 2;
+					const y = (TARGET_HEIGHT - scaledHeight) / 2;
+
+					// 绘制图片（居中裁剪）
+					ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+
+					// 转换为 JPEG Blob
+					canvas.toBlob(
+						(blob) => {
+							if (blob) {
+								resolve(blob);
+							} else {
+								reject(new Error('图片处理失败'));
+							}
+						},
+						'image/jpeg',
+						0.85 // quality: 85
+					);
+				};
+
+				img.onerror = () => {
+					reject(new Error('图片加载失败'));
+				};
+
+				// 设置图片源
+				if (typeof imageFile === 'string') {
+					img.src = imageFile;
+				} else {
+					const reader = new FileReader();
+					reader.onload = (e) => {
+						img.src = e.target?.result as string;
+					};
+					reader.onerror = () => {
+						reject(new Error('读取文件失败'));
+					};
+					reader.readAsDataURL(imageFile);
+				}
+			});
+		},
+		[isAspectRatioClose]
+	);
+
+	/**
+	 * 上传图片
+	 */
+	const handleUpload = useCallback(
+		async (imageBlob: Blob) => {
+			if (!manifest || uploading) return;
+
+			setUploading(true);
+			setError(null);
+
+			try {
+				// 创建 FormData
+				const formData = new FormData();
+				formData.append('image', imageBlob, 'image.jpg');
+				formData.append('version', manifest.version.toString());
+
+				// 发送上传请求（注意：FormData 不需要手动设置 Content-Type）
+				const apiUrl = `${getApiBaseUrl()}/api/mini-games/puzzler/upload`;
+				const token = localStorage.getItem('jwt_token');
+				const headers: HeadersInit = {};
+				if (token) {
+					headers['Authorization'] = `Bearer ${token}`;
+				}
+
+				const response = await fetch(apiUrl, {
+					method: 'POST',
+					headers: headers,
+					body: formData,
+				});
+
+				if (!response.ok) {
+					const errorData = await response.json();
+					if (response.status === 409) {
+						// 版本冲突，重新加载
+						await loadManifest();
+						throw new Error('版本已更新，请刷新后重试');
+					}
+					throw new Error(errorData.message || `上传失败: ${response.statusText}`);
+				}
+
+				const data = await response.json();
+				console.log('[Gallery] 图片上传成功:', data);
+				setManifest(data.manifest);
+				setUploadMode(null);
+				setUploadUrl('');
+			} catch (err) {
+				console.error('[Gallery] 图片上传失败:', err);
+				setError(err instanceof Error ? err.message : '上传失败');
+			} finally {
+				setUploading(false);
+			}
+		},
+		[manifest, uploading, loadManifest]
+	);
+
+	/**
+	 * 处理文件选择
+	 */
+	const handleFileSelect = useCallback(
+		async (e: React.ChangeEvent<HTMLInputElement>) => {
+			const file = e.target.files?.[0];
+			if (!file) return;
+
+			try {
+				console.log('[Gallery] 开始处理图片:', file.name);
+				const processedBlob = await processImage(file);
+				await handleUpload(processedBlob);
+			} catch (err) {
+				console.error('[Gallery] 图片处理失败:', err);
+				setError(err instanceof Error ? err.message : '图片处理失败');
+			} finally {
+				// 清空文件输入
+				if (fileInputRef.current) {
+					fileInputRef.current.value = '';
+				}
+			}
+		},
+		[processImage, handleUpload]
+	);
+
+	/**
+	 * 处理 URL 上传
+	 */
+	const handleUrlUpload = useCallback(
+		async () => {
+			if (!uploadUrl.trim()) {
+				setError('请输入图片 URL');
+				return;
+			}
+
+			try {
+				console.log('[Gallery] 开始处理图片 URL:', uploadUrl);
+				const processedBlob = await processImage(uploadUrl);
+				await handleUpload(processedBlob);
+			} catch (err) {
+				console.error('[Gallery] 图片处理失败:', err);
+				setError(err instanceof Error ? err.message : '图片处理失败');
+			}
+		},
+		[uploadUrl, processImage, handleUpload]
+	);
+
 	/**
 	 * 切换图片禁用状态
 	 */
@@ -107,10 +302,7 @@ export default function PuzzlerGallery() {
 				const apiUrl = `${getApiBaseUrl()}/api/mini-games/puzzler/manifest`;
 				const response = await fetch(apiUrl, {
 					method: 'PUT',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					credentials: 'include',
+					headers: getAuthHeaders(),
 					body: JSON.stringify({
 						version: manifest.version,
 						disabledImageIds: newDisabledIds,
@@ -191,6 +383,73 @@ export default function PuzzlerGallery() {
 					{error}
 				</div>
 			)}
+
+			{/* 上传区域 */}
+			<div className="puzzler-gallery-upload" style={{ marginBottom: '24px', padding: '16px', background: '#f5f5f5', borderRadius: '8px' }}>
+				<div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
+					<button
+						className="puzzler-btn puzzler-btn-secondary"
+						onClick={() => {
+							setUploadMode(uploadMode === 'file' ? null : 'file');
+							setUploadUrl('');
+						}}
+						disabled={uploading || saving}
+					>
+						{uploadMode === 'file' ? '取消' : '选择本地图片'}
+					</button>
+					<button
+						className="puzzler-btn puzzler-btn-secondary"
+						onClick={() => {
+							setUploadMode(uploadMode === 'url' ? null : 'url');
+							if (fileInputRef.current) fileInputRef.current.value = '';
+						}}
+						disabled={uploading || saving}
+					>
+						{uploadMode === 'url' ? '取消' : '粘贴 URL'}
+					</button>
+				</div>
+
+				{uploadMode === 'file' && (
+					<div>
+						<input
+							ref={fileInputRef}
+							type="file"
+							accept="image/*"
+							onChange={handleFileSelect}
+							disabled={uploading}
+							style={{ marginBottom: '8px' }}
+						/>
+						<div style={{ fontSize: '12px', color: '#666' }}>
+							提示：图片宽高比需接近 16:9，将自动调整为 1600x900
+						</div>
+					</div>
+				)}
+
+				{uploadMode === 'url' && (
+					<div>
+						<div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+							<input
+								type="text"
+								value={uploadUrl}
+								onChange={(e) => setUploadUrl(e.target.value)}
+								placeholder="输入图片 URL"
+								disabled={uploading}
+								style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+							/>
+							<button
+								className="puzzler-btn puzzler-btn-primary"
+								onClick={handleUrlUpload}
+								disabled={uploading || !uploadUrl.trim()}
+							>
+								{uploading ? '上传中...' : '上传'}
+							</button>
+						</div>
+						<div style={{ fontSize: '12px', color: '#666' }}>
+							提示：图片宽高比需接近 16:9，将自动调整为 1600x900
+						</div>
+					</div>
+				)}
+			</div>
 
 			<div className="puzzler-gallery-content">
 				<div className="puzzler-gallery-grid">

@@ -1294,6 +1294,11 @@ export default function Puzzler() {
 					className="puzzler-area"
 					ref={puzzleAreaRef}
 					data-difficulty={difficulty}
+					style={{
+						gridTemplateColumns: `repeat(${config.cols}, 1fr)`,
+						gridTemplateRows: `repeat(${config.rows}, 1fr)`,
+						aspectRatio: `${config.cols} / ${config.rows}`,
+					}}
 					onDragOver={(e) => {
 						e.preventDefault();
 						e.dataTransfer.dropEffect = 'move';

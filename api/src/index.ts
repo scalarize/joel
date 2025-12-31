@@ -235,6 +235,11 @@ export default {
 					return handlePuzzlerUpdateManifest(request, env);
 				}
 
+				// 拼图游戏图库 API：上传图片（仅管理员）
+				if (path === '/api/mini-games/puzzler/upload' && request.method === 'POST') {
+					return handlePuzzlerUploadImage(request, env);
+				}
+
 				console.log(`[路由] API 路由未匹配，调用 handleApiNotFound`);
 				return handleApiNotFound(request, env);
 			}
@@ -3048,6 +3053,69 @@ interface PuzzlerManifest {
 const MANIFEST_KEY = 'mini-games/puzzler/images/manifest.json';
 
 /**
+ * 统一的 manifest 更新函数
+ * 确保版本校验、更新 version 和 lastUpdate 的逻辑一致
+ */
+async function updateManifest(
+	env: Env,
+	updater: (current: PuzzlerManifest) => PuzzlerManifest,
+	expectedVersion: number
+): Promise<{ success: boolean; manifest?: PuzzlerManifest; error?: string; currentVersion?: number }> {
+	try {
+		// 先读取最新的 manifest，检查版本号
+		const currentObject = await env.ASSETS.get(MANIFEST_KEY);
+		let currentManifest: PuzzlerManifest;
+
+		if (currentObject) {
+			const manifestText = await currentObject.text();
+			currentManifest = JSON.parse(manifestText);
+		} else {
+			// 如果 manifest 不存在，创建默认值
+			currentManifest = {
+				version: 1,
+				lastUpdate: Date.now(),
+				maxImageId: 10,
+				disabledImageIds: [],
+			};
+		}
+
+		// 检查版本号是否匹配
+		if (currentManifest.version !== expectedVersion) {
+			console.log(`[API] Manifest 版本号不匹配: 当前=${currentManifest.version}, 请求=${expectedVersion}`);
+			return {
+				success: false,
+				error: '版本号已发生变化，请刷新后重试',
+				currentVersion: currentManifest.version,
+			};
+		}
+
+		// 使用 updater 函数更新 manifest
+		const updatedManifest: PuzzlerManifest = {
+			...updater(currentManifest),
+			version: currentManifest.version + 1, // 自动递增版本号
+			lastUpdate: Date.now(), // 自动更新时间戳
+		};
+
+		// 写入 R2
+		await env.ASSETS.put(MANIFEST_KEY, JSON.stringify(updatedManifest, null, 2), {
+			httpMetadata: {
+				contentType: 'application/json',
+				cacheControl: 'no-cache',
+			},
+		});
+
+		console.log('[API] Manifest 更新成功，新版本:', updatedManifest.version);
+		return { success: true, manifest: updatedManifest };
+	} catch (error) {
+		console.error('[API] Manifest 更新失败:', error);
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : '更新失败',
+		};
+	}
+}
+
+/**
  * API: 获取拼图游戏图库 manifest
  */
 async function handlePuzzlerGetManifest(request: Request, env: Env): Promise<Response> {
@@ -3141,7 +3209,7 @@ async function handlePuzzlerUpdateManifest(request: Request, env: Env): Promise<
 
 	try {
 		// 解析请求体
-		const body = await request.json();
+		const body = (await request.json()) as { version: number; disabledImageIds: number[] };
 		const { version, disabledImageIds } = body;
 
 		if (typeof version !== 'number' || !Array.isArray(disabledImageIds)) {
@@ -3156,56 +3224,42 @@ async function handlePuzzlerUpdateManifest(request: Request, env: Env): Promise<
 			);
 		}
 
-		// 先读取最新的 manifest，检查版本号
-		const currentObject = await env.ASSETS.get(MANIFEST_KEY);
-		let currentManifest: PuzzlerManifest;
+		// 使用统一的 manifest 更新函数
+		const result = await updateManifest(
+			env,
+			(current) => ({
+				...current,
+				disabledImageIds: disabledImageIds,
+			}),
+			version
+		);
 
-		if (currentObject) {
-			const manifestText = await currentObject.text();
-			currentManifest = JSON.parse(manifestText);
-		} else {
-			// 如果 manifest 不存在，创建默认值
-			currentManifest = {
-				version: 1,
-				lastUpdate: Date.now(),
-				maxImageId: 10,
-				disabledImageIds: [],
-			};
-		}
-
-		// 检查版本号是否匹配
-		if (currentManifest.version !== version) {
-			console.log(`[API] /api/mini-games/puzzler/manifest 版本号不匹配: 当前=${currentManifest.version}, 请求=${version}`);
+		if (!result.success) {
+			if (result.currentVersion !== undefined) {
+				return jsonWithCors(
+					request,
+					env,
+					{
+						error: 'Conflict',
+						message: result.error || '版本号已发生变化，请刷新后重试',
+						currentVersion: result.currentVersion,
+					},
+					409
+				);
+			}
 			return jsonWithCors(
 				request,
 				env,
 				{
-					error: 'Conflict',
-					message: '版本号已发生变化，请刷新后重试',
-					currentVersion: currentManifest.version,
+					error: 'Internal Server Error',
+					message: result.error || '更新失败',
 				},
-				409
+				500
 			);
 		}
 
-		// 更新 manifest
-		const updatedManifest: PuzzlerManifest = {
-			...currentManifest,
-			version: currentManifest.version + 1,
-			lastUpdate: Date.now(),
-			disabledImageIds: disabledImageIds,
-		};
-
-		// 写入 R2
-		await env.ASSETS.put(MANIFEST_KEY, JSON.stringify(updatedManifest, null, 2), {
-			httpMetadata: {
-				contentType: 'application/json',
-				cacheControl: 'no-cache', // manifest 不应该被缓存
-			},
-		});
-
 		console.log('[API] /api/mini-games/puzzler/manifest manifest 更新成功');
-		return jsonWithCors(request, env, updatedManifest, 200);
+		return jsonWithCors(request, env, result.manifest!, 200);
 	} catch (error) {
 		console.error('[API] /api/mini-games/puzzler/manifest 更新失败:', error);
 		return jsonWithCors(
@@ -3214,6 +3268,172 @@ async function handlePuzzlerUpdateManifest(request: Request, env: Env): Promise<
 			{
 				error: 'Internal Server Error',
 				message: error instanceof Error ? error.message : '更新 manifest 失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 上传拼图游戏图片（仅管理员）
+ */
+async function handlePuzzlerUploadImage(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/mini-games/puzzler/upload POST 请求');
+
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/mini-games/puzzler/upload 用户未登录或 JWT token 无效');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	// 检查是否为管理员
+	const dbUser = await getUserById(env.DB, user.id);
+	if (!dbUser) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Not Found',
+				message: '用户不存在',
+			},
+			404
+		);
+	}
+
+	const isAdmin = isAdminEmail(dbUser.email);
+	if (!isAdmin) {
+		console.log('[API] /api/mini-games/puzzler/upload 非管理员尝试上传图片');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '仅管理员可操作',
+			},
+			403
+		);
+	}
+
+	try {
+		// 解析 FormData
+		const formData = await request.formData();
+		const imageFile = formData.get('image') as File;
+		const versionStr = formData.get('version') as string;
+
+		if (!imageFile || !versionStr) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '缺少必要参数：image 或 version',
+				},
+				400
+			);
+		}
+
+		const version = parseInt(versionStr, 10);
+		if (isNaN(version)) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: 'version 必须是数字',
+				},
+				400
+			);
+		}
+
+		// 验证图片类型
+		if (!imageFile.type.startsWith('image/')) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '文件必须是图片格式',
+				},
+				400
+			);
+		}
+
+		// 读取图片数据
+		const imageData = await imageFile.arrayBuffer();
+
+		// 使用统一的 manifest 更新函数，增加 maxImageId
+		const result = await updateManifest(
+			env,
+			(current) => ({
+				...current,
+				maxImageId: current.maxImageId + 1,
+			}),
+			version
+		);
+
+		if (!result.success) {
+			if (result.currentVersion !== undefined) {
+				return jsonWithCors(
+					request,
+					env,
+					{
+						error: 'Conflict',
+						message: result.error || '版本号已发生变化，请刷新后重试',
+						currentVersion: result.currentVersion,
+					},
+					409
+				);
+			}
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Internal Server Error',
+					message: result.error || '更新 manifest 失败',
+				},
+				500
+			);
+		}
+
+		const newImageId = result.manifest!.maxImageId;
+		const imageKey = `mini-games/puzzler/images/${newImageId}.jpg`;
+
+		// 上传图片到 R2
+		await env.ASSETS.put(imageKey, imageData, {
+			httpMetadata: {
+				contentType: 'image/jpeg',
+				cacheControl: 'public, max-age=31536000', // 缓存一年
+			},
+		});
+
+		console.log(`[API] /api/mini-games/puzzler/upload 图片上传成功: ${imageKey}`);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				success: true,
+				imageId: newImageId,
+				manifest: result.manifest,
+			},
+			200
+		);
+	} catch (error) {
+		console.error('[API] /api/mini-games/puzzler/upload 上传失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '上传失败',
 			},
 			500
 		);

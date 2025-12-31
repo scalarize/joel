@@ -155,24 +155,7 @@
 	-webkit-user-select: none;
 }
 
-/* 难度对应的网格列数和比例 */
-.puzzler-area[data-difficulty='easy'] {
-	grid-template-columns: repeat(6, 1fr);
-	grid-template-rows: repeat(5, 1fr);
-	aspect-ratio: 6 / 5; /* 关键：锁定容器整体比例为 6:5 */
-}
-
-.puzzler-area[data-difficulty='medium'] {
-	grid-template-columns: repeat(8, 1fr);
-	grid-template-rows: repeat(6, 1fr);
-	aspect-ratio: 8 / 6; /* 4:3 */
-}
-
-.puzzler-area[data-difficulty='hard'] {
-	grid-template-columns: repeat(10, 1fr);
-	grid-template-rows: repeat(9, 1fr);
-	aspect-ratio: 10 / 9;
-}
+/* 难度对应的网格列数和比例 - 现在通过内联样式动态设置，从 DIFFICULTY_CONFIGS 读取 */
 
 .puzzler-piece {
 	/* 外层容器：负责网格定位，受 gap 影响 */
