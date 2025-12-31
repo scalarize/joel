@@ -184,6 +184,40 @@
 	border-bottom-left-radius: 0;
 }
 
+/* 当 piece 同时有两个相邻方向都是 grouped 时，移除对应的对角圆角（避免中心点黑点） */
+/* 左上角：同时有 top 和 left */
+.puzzler-piece.puzzler-piece-grouped-top.puzzler-piece-grouped-left {
+	border-top-left-radius: 0;
+}
+
+/* 右上角：同时有 top 和 right */
+.puzzler-piece.puzzler-piece-grouped-top.puzzler-piece-grouped-right {
+	border-top-right-radius: 0;
+}
+
+/* 左下角：同时有 bottom 和 left */
+.puzzler-piece.puzzler-piece-grouped-bottom.puzzler-piece-grouped-left {
+	border-bottom-left-radius: 0;
+}
+
+/* 右下角：同时有 bottom 和 right */
+.puzzler-piece.puzzler-piece-grouped-bottom.puzzler-piece-grouped-right {
+	border-bottom-right-radius: 0;
+}
+
+/* 当 piece 同时有三个方向都是 grouped 时，移除所有圆角 */
+.puzzler-piece.puzzler-piece-grouped-top.puzzler-piece-grouped-right.puzzler-piece-grouped-bottom,
+.puzzler-piece.puzzler-piece-grouped-top.puzzler-piece-grouped-right.puzzler-piece-grouped-left,
+.puzzler-piece.puzzler-piece-grouped-top.puzzler-piece-grouped-bottom.puzzler-piece-grouped-left,
+.puzzler-piece.puzzler-piece-grouped-right.puzzler-piece-grouped-bottom.puzzler-piece-grouped-left {
+	border-radius: 0;
+}
+
+/* 当 piece 四个方向都是 grouped 时（完全被包围），移除所有圆角 */
+.puzzler-piece.puzzler-piece-grouped-top.puzzler-piece-grouped-right.puzzler-piece-grouped-bottom.puzzler-piece-grouped-left {
+	border-radius: 0;
+}
+
 .puzzler-piece-inner {
 	/* 内层容器：负责背景展示，尺寸是相对于父容器的百分比，不受 gap 影响 */
 	position: absolute;

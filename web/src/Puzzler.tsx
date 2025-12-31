@@ -857,11 +857,9 @@ export default function Puzzler() {
 												key={pieceId}
 												className={`puzzler-piece puzzler-piece-in-bounding-box ${isInHoveredGroup ? 'puzzler-piece-hovered' : ''} ${
 													isInDraggingGroup ? 'puzzler-piece-dragging' : ''
-												} ${isGroupedTop && (isInHoveredGroup || isInDraggingGroup) ? 'puzzler-piece-grouped-top' : ''} ${
-													isGroupedRight && (isInHoveredGroup || isInDraggingGroup) ? 'puzzler-piece-grouped-right' : ''
-												} ${isGroupedBottom && (isInHoveredGroup || isInDraggingGroup) ? 'puzzler-piece-grouped-bottom' : ''} ${
-													isGroupedLeft && (isInHoveredGroup || isInDraggingGroup) ? 'puzzler-piece-grouped-left' : ''
-												}`}
+												} ${isGroupedTop ? 'puzzler-piece-grouped-top' : ''} ${isGroupedRight ? 'puzzler-piece-grouped-right' : ''} ${
+													isGroupedBottom ? 'puzzler-piece-grouped-bottom' : ''
+												} ${isGroupedLeft ? 'puzzler-piece-grouped-left' : ''}`}
 												style={{
 													position: 'absolute',
 													left: `${relativeCol * cellWidthPercent}%`,
