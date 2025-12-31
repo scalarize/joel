@@ -90,6 +90,8 @@ function getAuthHeaders(): HeadersInit {
 }
 
 export default function Puzzler() {
+	var prevImageIds: number[] = [];
+
 	const [difficulty, setDifficulty] = useState<Difficulty>('easy');
 	const [currentImage, setCurrentImage] = useState<number>(1);
 	const [pieces, setPieces] = useState<Piece[]>([]);
@@ -197,10 +199,19 @@ export default function Puzzler() {
 			console.error('[Puzzler] 没有可用的图片');
 			return;
 		}
-		const randomIndex = Math.floor(Math.random() * availableIds.length);
-		const randomImage = availableIds[randomIndex];
-		console.log('[Puzzler] 随机选择图片:', randomImage, '可用图片列表:', availableIds);
-		setCurrentImage(randomImage);
+		// 重试10次，尽量避免选择之前选过的图片
+		for (let i = 0; ; i++) {
+			const randomIndex = Math.floor(Math.random() * availableIds.length);
+			const randomImage = availableIds[randomIndex];
+			if (i >= 10 || !prevImageIds.includes(randomImage)) {
+				setCurrentImage(randomImage);
+				prevImageIds.push(randomImage);
+				if (prevImageIds.length > 5) {
+					prevImageIds.shift();
+				}
+				break;
+			}
+		}
 
 		const config = DIFFICULTY_CONFIGS[difficulty];
 		const totalPieces = config.rows * config.cols;

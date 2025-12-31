@@ -103,7 +103,7 @@ export default function PuzzlerGallery() {
 	 * 检查宽高比是否接近 16:9
 	 */
 	const isAspectRatioClose = useCallback((aspectRatio: number): boolean => {
-		const diff = Math.abs(aspectRatio - TARGET_ASPECT_RATIO);
+		const diff = Math.abs(aspectRatio - TARGET_ASPECT_RATIO) / TARGET_ASPECT_RATIO;
 		return diff <= ASPECT_TOLERANCE;
 	}, []);
 
