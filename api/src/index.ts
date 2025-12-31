@@ -225,6 +225,16 @@ export default {
 					return handleApiGenerateAccessToken(request, env);
 				}
 
+				// 拼图游戏图库 API：获取 manifest
+				if (path === '/api/mini-games/puzzler/manifest' && request.method === 'GET') {
+					return handlePuzzlerGetManifest(request, env);
+				}
+
+				// 拼图游戏图库 API：更新 manifest（仅管理员）
+				if (path === '/api/mini-games/puzzler/manifest' && request.method === 'PUT') {
+					return handlePuzzlerUpdateManifest(request, env);
+				}
+
 				console.log(`[路由] API 路由未匹配，调用 handleApiNotFound`);
 				return handleApiNotFound(request, env);
 			}
@@ -1191,6 +1201,10 @@ async function handleApiGetProfile(request: Request, env: Env): Promise<Response
 		);
 	}
 
+	// 检查是否为管理员
+	const dbUser = await getUserById(env.DB, user.id);
+	const isAdmin = dbUser ? isAdminEmail(dbUser.email) : false;
+
 	console.log(`[API] /api/profile 返回用户 Profile: ${user.email}`);
 	return jsonWithCors(
 		request,
@@ -1200,6 +1214,7 @@ async function handleApiGetProfile(request: Request, env: Env): Promise<Response
 			email: user.email,
 			name: user.name,
 			picture: user.picture ?? null,
+			isAdmin: isAdmin,
 		},
 		200
 	);
@@ -1312,6 +1327,9 @@ async function handleApiUpdateProfile(request: Request, env: Env): Promise<Respo
 			picture: picture === '' ? null : picture,
 		});
 
+		// 检查是否为管理员
+		const isAdmin = isAdminEmail(updatedUser.email);
+
 		console.log(`[API] /api/profile 更新成功: ${updatedUser.email}`);
 		return jsonWithCors(
 			request,
@@ -1323,6 +1341,7 @@ async function handleApiUpdateProfile(request: Request, env: Env): Promise<Respo
 					email: updatedUser.email,
 					name: updatedUser.name,
 					picture: updatedUser.picture ?? null,
+					isAdmin: isAdmin,
 				},
 			},
 			200
@@ -1483,7 +1502,7 @@ function handleApiNotFound(request: Request, env: Env): Response {
 function generateDefaultAvatar(name: string): string {
 	// 获取首字母（大写），如果为空则使用 "?"
 	const initial = name && name.length > 0 ? name.charAt(0).toUpperCase() : '?';
-	
+
 	// 转义特殊字符（虽然首字母通常不会有问题，但为了安全）
 	const escapedInitial = initial
 		.replace(/&/g, '&amp;')
@@ -1491,14 +1510,14 @@ function generateDefaultAvatar(name: string): string {
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&#39;');
-	
+
 	// 生成 SVG（圆形，紫色背景，白色文字）
 	// 尺寸：120x120，与 web 端的 avatar-preview-placeholder 保持一致
 	const svg = `<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg">
 	<circle cx="60" cy="60" r="60" fill="#667eea"/>
 	<text x="60" y="60" font-family="Arial, sans-serif" font-size="48" font-weight="600" fill="white" text-anchor="middle" dominant-baseline="central">${escapedInitial}</text>
 </svg>`;
-	
+
 	return svg;
 }
 
@@ -1530,7 +1549,7 @@ async function handleUserAvatar(request: Request, env: Env): Promise<Response> {
 		if (!user.picture) {
 			console.log(`[Avatar] 用户未设置头像，生成默认头像: ${userId}`);
 			const defaultAvatar = generateDefaultAvatar(user.name);
-			
+
 			// 设置 CORS 头（只允许主站和子站域名）
 			const corsHeaders = getCorsHeaders(request, env);
 			corsHeaders.set('Content-Type', 'image/svg+xml');
@@ -1571,7 +1590,7 @@ async function handleUserAvatar(request: Request, env: Env): Promise<Response> {
 		} else {
 			// 外部 URL，代理返回图片内容
 			console.log(`[Avatar] 代理外部 URL: ${pictureUrl}`);
-			
+
 			try {
 				const imageResponse = await fetch(pictureUrl);
 				if (!imageResponse.ok) {
@@ -3010,6 +3029,191 @@ async function handleAdminRevokeModule(request: Request, env: Env): Promise<Resp
 			{
 				error: 'Internal Server Error',
 				message: error instanceof Error ? error.message : '撤销权限失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * 拼图游戏图库 Manifest 接口
+ */
+interface PuzzlerManifest {
+	version: number;
+	lastUpdate: number;
+	maxImageId: number;
+	disabledImageIds: number[];
+}
+
+const MANIFEST_KEY = 'mini-games/puzzler/images/manifest.json';
+
+/**
+ * API: 获取拼图游戏图库 manifest
+ */
+async function handlePuzzlerGetManifest(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/mini-games/puzzler/manifest GET 请求');
+
+	try {
+		// 从 R2 读取 manifest
+		const object = await env.ASSETS.get(MANIFEST_KEY);
+
+		if (!object) {
+			// 如果 manifest 不存在，返回默认值
+			const defaultManifest: PuzzlerManifest = {
+				version: 1,
+				lastUpdate: Date.now(),
+				maxImageId: 10, // 默认最大图片 ID
+				disabledImageIds: [],
+			};
+
+			console.log('[API] /api/mini-games/puzzler/manifest manifest 不存在，返回默认值');
+			return jsonWithCors(request, env, defaultManifest, 200);
+		}
+
+		// 解析 JSON
+		const manifestText = await object.text();
+		const manifest: PuzzlerManifest = JSON.parse(manifestText);
+
+		console.log('[API] /api/mini-games/puzzler/manifest 返回 manifest');
+		return jsonWithCors(request, env, manifest, 200);
+	} catch (error) {
+		console.error('[API] /api/mini-games/puzzler/manifest 读取失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '读取 manifest 失败',
+			},
+			500
+		);
+	}
+}
+
+/**
+ * API: 更新拼图游戏图库 manifest（仅管理员）
+ */
+async function handlePuzzlerUpdateManifest(request: Request, env: Env): Promise<Response> {
+	console.log('[API] /api/mini-games/puzzler/manifest PUT 请求');
+
+	// 从 JWT token 获取用户信息（仅支持 JWT token）
+	const user = await getUserFromRequest(request, env.DB, env);
+	if (!user) {
+		console.log('[API] /api/mini-games/puzzler/manifest 用户未登录或 JWT token 无效');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: '需要登录',
+			},
+			401
+		);
+	}
+
+	// 检查是否为管理员
+	const dbUser = await getUserById(env.DB, user.id);
+	if (!dbUser) {
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Not Found',
+				message: '用户不存在',
+			},
+			404
+		);
+	}
+
+	const isAdmin = isAdminEmail(dbUser.email);
+	if (!isAdmin) {
+		console.log('[API] /api/mini-games/puzzler/manifest 非管理员尝试更新 manifest');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Forbidden',
+				message: '仅管理员可操作',
+			},
+			403
+		);
+	}
+
+	try {
+		// 解析请求体
+		const body = await request.json();
+		const { version, disabledImageIds } = body;
+
+		if (typeof version !== 'number' || !Array.isArray(disabledImageIds)) {
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Bad Request',
+					message: '请求参数无效',
+				},
+				400
+			);
+		}
+
+		// 先读取最新的 manifest，检查版本号
+		const currentObject = await env.ASSETS.get(MANIFEST_KEY);
+		let currentManifest: PuzzlerManifest;
+
+		if (currentObject) {
+			const manifestText = await currentObject.text();
+			currentManifest = JSON.parse(manifestText);
+		} else {
+			// 如果 manifest 不存在，创建默认值
+			currentManifest = {
+				version: 1,
+				lastUpdate: Date.now(),
+				maxImageId: 10,
+				disabledImageIds: [],
+			};
+		}
+
+		// 检查版本号是否匹配
+		if (currentManifest.version !== version) {
+			console.log(`[API] /api/mini-games/puzzler/manifest 版本号不匹配: 当前=${currentManifest.version}, 请求=${version}`);
+			return jsonWithCors(
+				request,
+				env,
+				{
+					error: 'Conflict',
+					message: '版本号已发生变化，请刷新后重试',
+					currentVersion: currentManifest.version,
+				},
+				409
+			);
+		}
+
+		// 更新 manifest
+		const updatedManifest: PuzzlerManifest = {
+			...currentManifest,
+			version: currentManifest.version + 1,
+			lastUpdate: Date.now(),
+			disabledImageIds: disabledImageIds,
+		};
+
+		// 写入 R2
+		await env.ASSETS.put(MANIFEST_KEY, JSON.stringify(updatedManifest, null, 2), {
+			httpMetadata: {
+				contentType: 'application/json',
+				cacheControl: 'no-cache', // manifest 不应该被缓存
+			},
+		});
+
+		console.log('[API] /api/mini-games/puzzler/manifest manifest 更新成功');
+		return jsonWithCors(request, env, updatedManifest, 200);
+	} catch (error) {
+		console.error('[API] /api/mini-games/puzzler/manifest 更新失败:', error);
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: error instanceof Error ? error.message : '更新 manifest 失败',
 			},
 			500
 		);

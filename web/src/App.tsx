@@ -4,6 +4,7 @@ import Profile from './Profile';
 import Admin from './Admin';
 import MiniGames from './MiniGames';
 import Puzzler from './Puzzler';
+import PuzzlerGallery from './PuzzlerGallery';
 import { MODULES } from './modules';
 
 /**
@@ -336,6 +337,8 @@ function App() {
 					)
 				) : path === '/mini-games/puzzler' ? (
 					<Puzzler />
+				) : path === '/mini-games/puzzler/gallery' ? (
+					<PuzzlerGallery />
 				) : path === '/admin' || path === '/admin/dashboard' || path === '/admin/users' ? (
 					user ? (
 						<Admin />

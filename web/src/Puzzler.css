@@ -18,6 +18,23 @@
 	border-bottom: 2px solid #e0e0e0;
 }
 
+.puzzler-header-left {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.puzzler-gallery-link {
+	font-size: 24px;
+	text-decoration: none;
+	transition: transform 0.2s;
+	display: inline-block;
+}
+
+.puzzler-gallery-link:hover {
+	transform: scale(1.1);
+}
+
 .puzzler-header h2 {
 	margin: 0;
 	font-size: 28px;
@@ -378,6 +395,163 @@
 	pointer-events: none;
 }
 
+/* 图库管理样式 */
+.puzzler-gallery {
+	width: 100%;
+	max-width: 1400px;
+	margin: 0 auto;
+	padding: 24px;
+}
+
+.puzzler-gallery-header {
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 2px solid #e0e0e0;
+}
+
+.puzzler-gallery-header h2 {
+	margin: 0 0 12px 0;
+	font-size: 28px;
+	font-weight: 600;
+	color: #333;
+}
+
+.puzzler-gallery-info {
+	display: flex;
+	gap: 24px;
+	font-size: 14px;
+	color: #666;
+}
+
+.puzzler-gallery-loading,
+.puzzler-gallery-error {
+	text-align: center;
+	padding: 48px;
+	font-size: 18px;
+	color: #666;
+}
+
+.puzzler-gallery-content {
+	margin-bottom: 24px;
+}
+
+.puzzler-gallery-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	gap: 16px;
+}
+
+.puzzler-gallery-item {
+	border: 2px solid #e0e0e0;
+	border-radius: 8px;
+	overflow: hidden;
+	transition: all 0.2s;
+}
+
+.puzzler-gallery-item:hover {
+	border-color: #667eea;
+	box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.puzzler-gallery-item-disabled {
+	opacity: 0.6;
+}
+
+.puzzler-gallery-item-image {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 1;
+	overflow: hidden;
+	background: #f5f5f5;
+}
+
+.puzzler-gallery-item-image img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.puzzler-gallery-item-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	color: white;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 600;
+	font-size: 16px;
+}
+
+.puzzler-gallery-item-info {
+	padding: 12px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background: white;
+}
+
+.puzzler-gallery-item-id {
+	font-size: 14px;
+	color: #666;
+	font-weight: 500;
+}
+
+.puzzler-gallery-item-toggle {
+	padding: 6px 12px;
+	border: none;
+	border-radius: 4px;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.puzzler-gallery-item-toggle-disable {
+	background: #fee;
+	color: #c00;
+}
+
+.puzzler-gallery-item-toggle-disable:hover:not(:disabled) {
+	background: #fcc;
+}
+
+.puzzler-gallery-item-toggle-enable {
+	background: #efe;
+	color: #0c0;
+}
+
+.puzzler-gallery-item-toggle-enable:hover:not(:disabled) {
+	background: #cfc;
+}
+
+.puzzler-gallery-item-toggle:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.puzzler-gallery-pagination {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+.puzzler-gallery-pagination-info {
+	font-size: 16px;
+	color: #666;
+}
+
+.puzzler-gallery-footer {
+	text-align: center;
+	padding-top: 24px;
+	border-top: 2px solid #e0e0e0;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
 	.puzzler {
@@ -401,5 +575,15 @@
 
 	.puzzler-area {
 		max-width: 100%;
+	}
+
+	.puzzler-gallery-grid {
+		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		gap: 12px;
+	}
+
+	.puzzler-gallery-info {
+		flex-direction: column;
+		gap: 8px;
 	}
 }

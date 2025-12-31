@@ -43,6 +43,7 @@ interface ProfileData {
 	email: string;
 	name: string;
 	picture: string | null;
+	isAdmin?: boolean; // 可选字段，向后兼容
 }
 
 export default function Profile() {

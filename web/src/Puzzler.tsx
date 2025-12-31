@@ -32,9 +32,9 @@ interface DifficultyConfig {
 }
 
 const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
-	easy: { rows: 5, cols: 6, label: '易' }, // 6x5 = 30 块
-	medium: { rows: 6, cols: 8, label: '中' }, // 8x6 = 48 块
-	hard: { rows: 9, cols: 10, label: '难' }, // 10x9 = 90 块
+	easy: { rows: 5, cols: 9, label: '易' },
+	medium: { rows: 7, cols: 12, label: '中' },
+	hard: { rows: 9, cols: 16, label: '难' },
 };
 
 /**
@@ -55,9 +55,39 @@ interface Piece {
 }
 
 /**
- * 图片总数（硬编码）
+ * Manifest 接口
  */
-const TOTAL_IMAGES = 10;
+interface PuzzlerManifest {
+	version: number;
+	lastUpdate: number;
+	maxImageId: number;
+	disabledImageIds: number[];
+}
+
+/**
+ * 获取 API 基础 URL
+ */
+function getApiBaseUrl(): string {
+	const hostname = window.location.hostname;
+	if (hostname === 'joel.scalarize.cn' || hostname.includes('.scalarize.cn')) {
+		return 'https://api.joel.scalarize.cn';
+	}
+	return 'https://api.joel.scalarize.org';
+}
+
+/**
+ * 获取带有 JWT token 的请求 headers
+ */
+function getAuthHeaders(): HeadersInit {
+	const headers: HeadersInit = {
+		'Content-Type': 'application/json',
+	};
+	const token = localStorage.getItem('jwt_token');
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
+	}
+	return headers;
+}
 
 export default function Puzzler() {
 	const [difficulty, setDifficulty] = useState<Difficulty>('easy');
@@ -65,6 +95,10 @@ export default function Puzzler() {
 	const [pieces, setPieces] = useState<Piece[]>([]);
 	const [gameStarted, setGameStarted] = useState(false);
 	const [gameWon, setGameWon] = useState(false);
+	const [manifest, setManifest] = useState<PuzzlerManifest | null>(null);
+	const [manifestLoading, setManifestLoading] = useState(true);
+	const [manifestError, setManifestError] = useState<string | null>(null);
+	const [user, setUser] = useState<{ isAdmin?: boolean } | null>(null);
 	const [draggingPiece, setDraggingPiece] = useState<number | null>(null);
 	const [hoveredPiece, setHoveredPiece] = useState<number | null>(null);
 	const [dragStartCell, setDragStartCell] = useState<Position | null>(null);
@@ -84,13 +118,87 @@ export default function Puzzler() {
 	}, []);
 
 	/**
+	 * 加载用户信息
+	 */
+	const loadUser = useCallback(async () => {
+		try {
+			const apiUrl = `${getApiBaseUrl()}/api/profile`;
+			const response = await fetch(apiUrl, {
+				headers: getAuthHeaders(),
+			});
+			if (response.ok) {
+				const data = await response.json();
+				// /api/profile 直接返回用户对象，包含 isAdmin 字段
+				if (data && !data.error) {
+					setUser(data);
+					console.log('[Puzzler] 用户信息加载成功:', data);
+				}
+			} else {
+				console.log('[Puzzler] 加载用户信息失败，状态码:', response.status);
+			}
+		} catch (error) {
+			console.error('[Puzzler] 加载用户信息失败:', error);
+		}
+	}, []);
+
+	/**
+	 * 加载 manifest（从 API 获取）
+	 */
+	const loadManifest = useCallback(async () => {
+		console.log('[Puzzler] 开始加载 manifest');
+		setManifestLoading(true);
+		setManifestError(null);
+		try {
+			const apiUrl = `${getApiBaseUrl()}/api/mini-games/puzzler/manifest`;
+			const response = await fetch(apiUrl);
+			if (!response.ok) {
+				throw new Error(`加载 manifest 失败: ${response.statusText}`);
+			}
+			const data: PuzzlerManifest = await response.json();
+			console.log('[Puzzler] Manifest 加载成功:', data);
+			setManifest(data);
+		} catch (error) {
+			console.error('[Puzzler] Manifest 加载失败:', error);
+			const errorMessage = error instanceof Error ? error.message : '加载 manifest 失败';
+			setManifestError(errorMessage);
+		} finally {
+			setManifestLoading(false);
+		}
+	}, []);
+
+	/**
+	 * 获取可用的图片 ID 列表
+	 */
+	const getAvailableImageIds = useCallback((): number[] => {
+		if (!manifest) {
+			// 如果 manifest 未加载，返回默认范围
+			return Array.from({ length: 10 }, (_, i) => i + 1);
+		}
+
+		const availableIds: number[] = [];
+		for (let i = 1; i <= manifest.maxImageId; i++) {
+			if (!manifest.disabledImageIds.includes(i)) {
+				availableIds.push(i);
+			}
+		}
+		return availableIds;
+	}, [manifest]);
+
+	/**
 	 * 初始化新游戏
 	 */
 	const initNewGame = useCallback(() => {
 		console.log('[Puzzler] 初始化新游戏');
 
-		// 随机选择图片
-		const randomImage = Math.floor(Math.random() * TOTAL_IMAGES) + 1;
+		// 从可用图片中随机选择
+		const availableIds = getAvailableImageIds();
+		if (availableIds.length === 0) {
+			console.error('[Puzzler] 没有可用的图片');
+			return;
+		}
+		const randomIndex = Math.floor(Math.random() * availableIds.length);
+		const randomImage = availableIds[randomIndex];
+		console.log('[Puzzler] 随机选择图片:', randomImage, '可用图片列表:', availableIds);
 		setCurrentImage(randomImage);
 
 		const config = DIFFICULTY_CONFIGS[difficulty];
@@ -124,7 +232,7 @@ export default function Puzzler() {
 		setTouchStartCell(null);
 		setTouchStartPosition(null);
 		setTouchCurrentCell(null);
-	}, [difficulty]);
+	}, [difficulty, getAvailableImageIds]);
 
 	/**
 	 * 切换难度
@@ -1060,10 +1168,18 @@ export default function Puzzler() {
 		clearTouchState();
 	}, [clearTouchState]);
 
-	// 初始化游戏
+	// 初始化：加载用户信息和 manifest
 	useEffect(() => {
-		initNewGame();
-	}, []);
+		loadUser();
+		loadManifest();
+	}, [loadUser, loadManifest]);
+
+	// 当 manifest 加载完成后，初始化游戏
+	useEffect(() => {
+		if (!manifestLoading && manifest && !manifestError) {
+			initNewGame();
+		}
+	}, [manifestLoading, manifest, manifestError, initNewGame]);
 
 	// 添加全局触摸取消处理，防止状态卡住
 	useEffect(() => {
@@ -1093,13 +1209,52 @@ export default function Puzzler() {
 		};
 	}, [touchDraggingPiece, clearTouchState]);
 
+	// 如果 manifest 加载失败，显示错误信息
+	if (manifestError) {
+		return (
+			<div className="puzzler">
+				<div className="puzzler-header">
+					<h2>拼图游戏 Puzzler</h2>
+				</div>
+				<div className="puzzler-error" style={{ padding: '48px', textAlign: 'center' }}>
+					<h3>加载失败</h3>
+					<p>{manifestError}</p>
+					<button onClick={loadManifest} className="puzzler-btn puzzler-btn-primary" style={{ marginTop: '16px' }}>
+						重试
+					</button>
+				</div>
+			</div>
+		);
+	}
+
+	// 如果 manifest 正在加载，显示加载中
+	if (manifestLoading || !manifest) {
+		return (
+			<div className="puzzler">
+				<div className="puzzler-header">
+					<h2>拼图游戏 Puzzler</h2>
+				</div>
+				<div className="puzzler-loading" style={{ padding: '48px', textAlign: 'center' }}>
+					加载中...
+				</div>
+			</div>
+		);
+	}
+
 	const config = DIFFICULTY_CONFIGS[difficulty];
 	const imageUrl = getImageUrl(currentImage);
 
 	return (
 		<div className="puzzler">
 			<div className="puzzler-header">
-				<h2>拼图游戏 Puzzler</h2>
+				<div className="puzzler-header-left">
+					<h2>拼图游戏 Puzzler</h2>
+					{user?.isAdmin && (
+						<a href="/mini-games/puzzler/gallery" className="puzzler-gallery-link" title="图库管理">
+							📚
+						</a>
+					)}
+				</div>
 				<div className="puzzler-controls">
 					<button onClick={initNewGame} className="puzzler-btn puzzler-btn-primary">
 						新游戏
