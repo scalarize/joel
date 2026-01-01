@@ -1,0 +1,445 @@
+/**
+ * 2048 游戏样式
+ */
+
+.game2048 {
+	width: 100%;
+	max-width: 800px;
+	margin: 0 auto;
+	padding: 24px;
+}
+
+.game2048-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 2px solid #e0e0e0;
+}
+
+.game2048-header h2 {
+	margin: 0;
+	font-size: 28px;
+	font-weight: 600;
+	color: #333;
+}
+
+.game2048-controls {
+	display: flex;
+	gap: 12px;
+}
+
+.game2048-btn {
+	padding: 10px 20px;
+	border: none;
+	border-radius: 8px;
+	font-size: 16px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.game2048-btn-primary {
+	background: #667eea;
+	color: white;
+}
+
+.game2048-btn-primary:hover:not(:disabled) {
+	background: #5568d3;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.game2048-btn-secondary {
+	background: #f5f5f5;
+	color: #333;
+	border: 1px solid #ddd;
+}
+
+.game2048-btn-secondary:hover:not(:disabled) {
+	background: #e8e8e8;
+}
+
+.game2048-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.game2048-container {
+	display: flex;
+	gap: 24px;
+	justify-content: center;
+	align-items: flex-start;
+}
+
+.game2048-board {
+	display: grid;
+	gap: 8px;
+	background: #bbada0;
+	padding: 8px;
+	border-radius: 8px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+	width: 100%;
+	max-width: 500px;
+	aspect-ratio: 1;
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+.game2048-cell {
+	background: #cdc1b4;
+	border-radius: 4px;
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.game2048-tile {
+	position: absolute;
+	width: calc(100% - 8px);
+	height: calc(100% - 8px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 4px;
+	font-weight: 700;
+	font-size: 2em;
+	color: #776e65;
+	transition: all 0.15s ease-in-out;
+}
+
+.game2048-tile-new {
+	animation: tilePop 0.2s ease-in-out;
+}
+
+.game2048-tile-merged {
+	animation: tileMerge 0.3s ease-in-out;
+	z-index: 10;
+}
+
+@keyframes tileAppear {
+	from {
+		opacity: 0;
+		transform: scale(0.8);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes tilePop {
+	0% {
+		opacity: 0;
+		transform: scale(0);
+	}
+	50% {
+		transform: scale(1.1);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes tileMerge {
+	0% {
+		transform: scale(1);
+	}
+	50% {
+		transform: scale(1.2);
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+
+/* 不同数字的样式 */
+.game2048-tile-2 {
+	background: #eee4da;
+	font-size: 2em;
+}
+
+.game2048-tile-4 {
+	background: #ede0c8;
+	font-size: 2em;
+}
+
+.game2048-tile-8 {
+	background: #f2b179;
+	color: #f9f6f2;
+	font-size: 2em;
+}
+
+.game2048-tile-16 {
+	background: #f59563;
+	color: #f9f6f2;
+	font-size: 1.8em;
+}
+
+.game2048-tile-32 {
+	background: #f67c5f;
+	color: #f9f6f2;
+	font-size: 1.8em;
+}
+
+.game2048-tile-64 {
+	background: #f65e3b;
+	color: #f9f6f2;
+	font-size: 1.8em;
+}
+
+.game2048-tile-128 {
+	background: #edcf72;
+	color: #f9f6f2;
+	font-size: 1.5em;
+	box-shadow: 0 0 30px 10px rgba(243, 215, 116, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.game2048-tile-256 {
+	background: #edcc61;
+	color: #f9f6f2;
+	font-size: 1.5em;
+	box-shadow: 0 0 30px 10px rgba(243, 215, 116, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.game2048-tile-512 {
+	background: #edc850;
+	color: #f9f6f2;
+	font-size: 1.5em;
+	box-shadow: 0 0 30px 10px rgba(243, 215, 116, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.game2048-tile-1024 {
+	background: #edc53f;
+	color: #f9f6f2;
+	font-size: 1.3em;
+	box-shadow: 0 0 30px 10px rgba(243, 215, 116, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.game2048-tile-2048 {
+	background: #edc22e;
+	color: #f9f6f2;
+	font-size: 1.3em;
+	box-shadow: 0 0 30px 10px rgba(243, 215, 116, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+/* 更大的数字 */
+.game2048-tile-4096,
+.game2048-tile-8192,
+.game2048-tile-16384,
+.game2048-tile-32768,
+.game2048-tile-65536,
+.game2048-tile-131072,
+.game2048-tile-262144,
+.game2048-tile-524288,
+.game2048-tile-1048576 {
+	background: #3c3a32;
+	color: #f9f6f2;
+	font-size: 1.2em;
+	box-shadow: 0 0 30px 10px rgba(60, 58, 50, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+/* 控制按钮面板 */
+.game2048-controls-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	align-items: center;
+}
+
+.game2048-controls-horizontal {
+	display: flex;
+	gap: 8px;
+}
+
+.game2048-direction-btn {
+	width: 60px;
+	height: 60px;
+	border: none;
+	border-radius: 8px;
+	background: #f5f5f5;
+	color: #333;
+	font-size: 24px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid #ddd;
+}
+
+.game2048-direction-btn:hover:not(:disabled) {
+	background: #e8e8e8;
+	transform: translateY(-2px);
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.game2048-direction-btn:active:not(:disabled) {
+	transform: translateY(0);
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.game2048-direction-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* 游戏结束提示 */
+.game2048-game-over {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 1000;
+	animation: fadeIn 0.3s;
+}
+
+.game2048-game-over-content {
+	background: white;
+	padding: 48px;
+	border-radius: 16px;
+	text-align: center;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+	animation: slideUp 0.3s;
+}
+
+.game2048-game-over-content h3 {
+	margin: 0 0 16px 0;
+	font-size: 32px;
+	color: #333;
+}
+
+.game2048-game-over-content p {
+	margin: 0 0 24px 0;
+	font-size: 18px;
+	color: #666;
+}
+
+/* 目标达成提示 */
+.game2048-target-modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 1000;
+	animation: fadeIn 0.3s;
+}
+
+.game2048-target-content {
+	background: white;
+	padding: 48px;
+	border-radius: 16px;
+	text-align: center;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+	animation: slideUp 0.3s;
+}
+
+.game2048-target-content h3 {
+	margin: 0 0 16px 0;
+	font-size: 32px;
+	color: #333;
+}
+
+.game2048-target-content p {
+	margin: 0 0 24px 0;
+	font-size: 18px;
+	color: #666;
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes slideUp {
+	from {
+		transform: translateY(20px);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+	.game2048 {
+		padding: 16px;
+	}
+
+	.game2048-header {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 16px;
+	}
+
+	.game2048-controls {
+		width: 100%;
+		justify-content: space-between;
+	}
+
+	.game2048-btn {
+		flex: 1;
+	}
+
+	.game2048-container {
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.game2048-board {
+		max-width: 100%;
+	}
+
+	.game2048-controls-panel {
+		width: 100%;
+		max-width: 300px;
+	}
+
+	.game2048-tile {
+		font-size: 1.5em;
+	}
+
+	.game2048-tile-128,
+	.game2048-tile-256,
+	.game2048-tile-512 {
+		font-size: 1.2em;
+	}
+
+	.game2048-tile-1024,
+	.game2048-tile-2048 {
+		font-size: 1em;
+	}
+
+	.game2048-tile-4096,
+	.game2048-tile-8192,
+	.game2048-tile-16384,
+	.game2048-tile-32768,
+	.game2048-tile-65536,
+	.game2048-tile-131072,
+	.game2048-tile-262144,
+	.game2048-tile-524288,
+	.game2048-tile-1048576 {
+		font-size: 0.9em;
+	}
+}

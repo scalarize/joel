@@ -20,6 +20,13 @@ const GAMES: Game[] = [
 		icon: '🧩',
 		path: '/mini-games/puzzler',
 	},
+	{
+		id: '2048',
+		title: '2048',
+		description: '滑动合并数字，挑战更高目标',
+		icon: '🔢',
+		path: '/mini-games/2048',
+	},
 ];
 
 export default function MiniGames() {

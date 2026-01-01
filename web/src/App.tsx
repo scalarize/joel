@@ -5,6 +5,7 @@ import Admin from './Admin';
 import MiniGames from './MiniGames';
 import Puzzler from './Puzzler';
 import PuzzlerGallery from './PuzzlerGallery';
+import Game2048 from './Game2048';
 import { MODULES } from './modules';
 
 /**
@@ -280,6 +281,53 @@ function App() {
 		await checkAuth();
 	};
 
+	// 简单的路由处理
+	const path = window.location.pathname;
+
+	// 根据路径设置页面标题（必须在所有早期返回之前）
+	useEffect(() => {
+		const updateTitle = () => {
+			const currentPath = window.location.pathname;
+			let title = 'Joel center';
+			switch (currentPath) {
+				case '/mini-games':
+					title = '小游戏集合 - Joel center';
+					break;
+				case '/mini-games/2048':
+					title = '2048 - Joel center';
+					break;
+				case '/mini-games/puzzler':
+					title = '拼图游戏 - Joel center';
+					break;
+				case '/profile':
+					title = '个人资料 - Joel center';
+					break;
+				case '/admin':
+				case '/admin/dashboard':
+					title = '管理后台 - Joel center';
+					break;
+				case '/admin/users':
+					title = '用户管理 - Joel center';
+					break;
+				default:
+					title = 'Joel center';
+					break;
+			}
+			document.title = title;
+			console.log(`[前端] 设置页面标题: ${title} (路径: ${currentPath})`);
+		};
+
+		// 初始设置
+		updateTitle();
+
+		// 监听 popstate 事件（浏览器前进/后退）
+		window.addEventListener('popstate', updateTitle);
+
+		return () => {
+			window.removeEventListener('popstate', updateTitle);
+		};
+	}, [path]);
+
 	if (loading) {
 		return (
 			<div className="app">
@@ -287,9 +335,6 @@ function App() {
 			</div>
 		);
 	}
-
-	// 简单的路由处理
-	const path = window.location.pathname;
 
 	// 处理 Google OAuth 回调路由
 	if (path === '/auth/google/callback') {
@@ -339,6 +384,8 @@ function App() {
 					<Puzzler />
 				) : path === '/mini-games/puzzler/gallery' ? (
 					<PuzzlerGallery />
+				) : path === '/mini-games/2048' ? (
+					<Game2048 />
 				) : path === '/admin' || path === '/admin/dashboard' || path === '/admin/users' ? (
 					user ? (
 						<Admin />
