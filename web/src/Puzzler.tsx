@@ -111,6 +111,8 @@ export default function Puzzler() {
 	const [touchCurrentCell, setTouchCurrentCell] = useState<Position | null>(null); // 当前触摸位置对应的 cell，用于显示拖动预览
 	const puzzleAreaRef = useRef<HTMLDivElement>(null);
 	const hasInitializedRef = useRef(false);
+	const imagePreloadRef = useRef<HTMLImageElement | null>(null);
+	const [imageLoaded, setImageLoaded] = useState(false);
 
 	/**
 	 * 获取图片 URL
@@ -119,6 +121,38 @@ export default function Puzzler() {
 		const r2Url = getR2PublicUrl();
 		return `${r2Url}/mini-games/puzzler/images/${imageNum}.jpg`;
 	}, []);
+
+	/**
+	 * 预加载图片
+	 */
+	const preloadImage = useCallback(
+		(imageNum: number) => {
+			console.log('[Puzzler] 开始预加载图片:', imageNum);
+			setImageLoaded(false);
+
+			// 如果已有预加载的图片对象，先清理
+			if (imagePreloadRef.current) {
+				imagePreloadRef.current.onload = null;
+				imagePreloadRef.current.onerror = null;
+			}
+
+			// 创建新的图片对象
+			const img = new Image();
+			img.src = getImageUrl(imageNum);
+
+			img.onload = () => {
+				console.log('[Puzzler] 图片预加载完成:', imageNum);
+				imagePreloadRef.current = img;
+				setImageLoaded(true);
+			};
+
+			img.onerror = () => {
+				console.error('[Puzzler] 图片预加载失败:', imageNum);
+				setImageLoaded(false);
+			};
+		},
+		[getImageUrl]
+	);
 
 	/**
 	 * 加载用户信息
@@ -132,9 +166,12 @@ export default function Puzzler() {
 			if (response.ok) {
 				const data = await response.json();
 				// /api/profile 直接返回用户对象，包含 isAdmin 字段
-				if (data && !data.error) {
+				// 未登录时返回空信息（id 为 null），此时不设置 user
+				if (data && data.id !== null && !data.error) {
 					setUser(data);
 					console.log('[Puzzler] 用户信息加载成功:', data);
+				} else {
+					console.log('[Puzzler] 用户未登录，不设置用户信息');
 				}
 			} else {
 				console.log('[Puzzler] 加载用户信息失败，状态码:', response.status);
@@ -200,17 +237,24 @@ export default function Puzzler() {
 			return;
 		}
 		// 重试10次，尽量避免选择之前选过的图片
+		let selectedImage: number | null = null;
 		for (let i = 0; ; i++) {
 			const randomIndex = Math.floor(Math.random() * availableIds.length);
 			const randomImage = availableIds[randomIndex];
 			if (i >= 10 || !prevImageIds.includes(randomImage)) {
+				selectedImage = randomImage;
 				setCurrentImage(randomImage);
 				prevImageIds.push(randomImage);
-				if (prevImageIds.length > 5) {
+				if (prevImageIds.length > 6) {
 					prevImageIds.shift();
 				}
 				break;
 			}
+		}
+
+		// 预加载图片
+		if (selectedImage !== null) {
+			preloadImage(selectedImage);
 		}
 
 		const config = DIFFICULTY_CONFIGS[difficulty];
@@ -244,7 +288,7 @@ export default function Puzzler() {
 		setTouchStartCell(null);
 		setTouchStartPosition(null);
 		setTouchCurrentCell(null);
-	}, [difficulty, getAvailableImageIds]);
+	}, [difficulty, manifest, getAvailableImageIds, preloadImage]);
 
 	/**
 	 * 切换难度
@@ -1255,7 +1299,22 @@ export default function Puzzler() {
 	}
 
 	const config = DIFFICULTY_CONFIGS[difficulty];
-	const imageUrl = getImageUrl(currentImage);
+	// 使用预加载的图片 URL（如果已加载），否则使用原始 URL（浏览器会使用缓存）
+	const imageUrl = imagePreloadRef.current?.src || getImageUrl(currentImage);
+
+	// 如果图片还未加载完成，显示加载状态
+	if (!imageLoaded && imagePreloadRef.current === null) {
+		return (
+			<div className="puzzler">
+				<div className="puzzler-header">
+					<h2>拼图游戏 Puzzler</h2>
+				</div>
+				<div className="puzzler-loading" style={{ padding: '48px', textAlign: 'center' }}>
+					加载图片中...
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="puzzler">

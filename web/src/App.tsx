@@ -399,10 +399,8 @@ function App() {
 					) : (
 						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
-				) : user ? (
-					<Dashboard user={user} isCnHost={isCnHost} modulePermissions={modulePermissions} />
 				) : (
-					<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
+					<Dashboard user={user} isCnHost={isCnHost} modulePermissions={modulePermissions} />
 				)}
 			</main>
 		</div>
@@ -630,24 +628,29 @@ function Dashboard({
 
 	// 根据用户权限过滤模块
 	const visibleModules = modules.filter((module) => {
-		// 管理员自动拥有所有模块的访问权限
-		if (user?.isAdmin === true) {
+		// mini-games 模块所有人可访问（包括未登录用户）
+		if (module.id === 'mini-games') {
 			return true;
 		}
 
-		// profile 模块所有人可访问
+		// 未登录用户只能访问 mini-games
+		if (!user) {
+			return false;
+		}
+
+		// profile 模块所有人可访问（但需要登录）
 		if (module.id === 'profile') {
+			return true;
+		}
+
+		// 管理员自动拥有所有模块的访问权限
+		if (user.isAdmin === true) {
 			return true;
 		}
 
 		// admin 模块只有管理员可访问
 		if (module.id === 'admin') {
 			return false; // 非管理员不能访问
-		}
-
-		// mini-games 模块所有已登录用户可访问（不需要检查授权）
-		if (module.id === 'mini-games') {
-			return true;
 		}
 
 		// favor、gd、discover 需要检查授权

@@ -630,7 +630,7 @@ export async function hasModulePermission(db: D1Database, userId: string, module
 		return false; // 非管理员不能访问
 	}
 
-	// mini-games 模块所有已登录用户可访问（不需要检查授权）
+	// mini-games 模块所有人可访问（包括未登录用户，不需要检查授权）
 	if (moduleId === 'mini-games') {
 		return true;
 	}

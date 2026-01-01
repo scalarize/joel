@@ -81,6 +81,12 @@ export default function Profile() {
 			}
 
 			const data: ProfileData = await response.json();
+			// 检查返回的数据是否有效（未登录时 id 为 null）
+			if (!data || data.id === null) {
+				// 未登录，重定向到首页
+				window.location.href = '/';
+				return;
+			}
 			console.log('[Profile] Profile 加载成功');
 			setProfile(data);
 			setDisplayName(data.name);

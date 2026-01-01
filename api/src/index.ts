@@ -1194,15 +1194,19 @@ async function handleApiGetProfile(request: Request, env: Env): Promise<Response
 	// 从 JWT token 获取用户信息（仅支持 JWT token）
 	const user = await getUserFromRequest(request, env.DB, env);
 	if (!user) {
-		console.log('[API] /api/profile 用户未登录或 JWT token 无效');
+		// 未登录时返回空信息（用于 mini-games 等不需要登录的功能）
+		console.log('[API] /api/profile 用户未登录，返回空信息');
 		return jsonWithCors(
 			request,
 			env,
 			{
-				error: 'Unauthorized',
-				message: '需要登录',
+				id: null,
+				email: null,
+				name: null,
+				picture: null,
+				isAdmin: false,
 			},
-			401
+			200
 		);
 	}
 
