@@ -243,6 +243,46 @@ function checkTarget(grid: Cell[][], achievedTargets: Set<number>): number | nul
 	return null;
 }
 
+/**
+ * AI 评估函数：评估当前游戏状态的分数
+ * 目前实现：返回空位的数量
+ */
+function evaluateGrid(grid: Cell[][]): number {
+	let emptyCount = 0;
+	for (let row = 0; row < grid.length; row++) {
+		for (let col = 0; col < grid[row].length; col++) {
+			if (grid[row][col].value === 0) {
+				emptyCount++;
+			}
+		}
+	}
+	return emptyCount;
+}
+
+/**
+ * AI 决策函数：测试四个方向，返回分数最高的方向
+ */
+function aiDecideMove(grid: Cell[][]): Direction | null {
+	const directions: Direction[] = ['up', 'down', 'left', 'right'];
+	let bestDirection: Direction | null = null;
+	let bestScore = -1;
+
+	for (const direction of directions) {
+		const { grid: newGrid, moved } = moveGrid(grid, direction);
+		if (moved) {
+			// 模拟添加新数字（添加一个随机数字）
+			const withNewTile = addRandomTile(newGrid);
+			const score = evaluateGrid(withNewTile);
+			if (score > bestScore) {
+				bestScore = score;
+				bestDirection = direction;
+			}
+		}
+	}
+
+	return bestDirection;
+}
+
 export default function Game2048() {
 	const [grid, setGrid] = useState<Cell[][]>(() => initializeGame(4));
 	const [gridSize, setGridSize] = useState<GridSize>(4);
@@ -251,8 +291,17 @@ export default function Game2048() {
 	const [achievedTargets, setAchievedTargets] = useState<Set<number>>(new Set());
 	const [currentTarget, setCurrentTarget] = useState<number | null>(null);
 	const [isAnimating, setIsAnimating] = useState(false);
+	const [isAiMode, setIsAiMode] = useState(false);
+	const [aiActiveDirection, setAiActiveDirection] = useState<Direction | null>(null);
+	const [aiInterval, setAiInterval] = useState<number>(1); // AI 执行间隔（秒）
 	const gameAreaRef = useRef<HTMLDivElement>(null);
 	const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+	const aiIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+	// 合法的间隔时间（秒）
+	const VALID_INTERVALS = [0.1, 0.2, 0.5, 1, 2, 3];
+	const MIN_INTERVAL = 0.1;
+	const MAX_INTERVAL = 3;
 
 	/**
 	 * 切换布局大小
@@ -277,27 +326,84 @@ export default function Game2048() {
 	}, [gridSize, gameStarted]);
 
 	/**
+	 * 停止 AI 模式
+	 */
+	const stopAiMode = useCallback(() => {
+		console.log('[2048] 停止 AI 模式');
+		setIsAiMode(false);
+		setAiActiveDirection(null);
+		if (aiIntervalRef.current) {
+			clearInterval(aiIntervalRef.current);
+			aiIntervalRef.current = null;
+		}
+	}, []);
+
+	/**
+	 * 启动 AI 模式
+	 */
+	const startAiMode = useCallback(() => {
+		console.log('[2048] 启动 AI 模式');
+		// 重置间隔为默认值 1
+		setAiInterval(1);
+		setIsAiMode(true);
+	}, []);
+
+	/**
+	 * 加快 AI 执行速度
+	 */
+	const speedUpAi = useCallback(() => {
+		const currentIndex = VALID_INTERVALS.indexOf(aiInterval);
+		if (currentIndex > 0) {
+			const newInterval = VALID_INTERVALS[currentIndex - 1];
+			console.log(`[2048] AI 间隔调整: ${aiInterval}秒 -> ${newInterval}秒`);
+			setAiInterval(newInterval);
+		}
+	}, [aiInterval]);
+
+	/**
+	 * 减慢 AI 执行速度
+	 */
+	const slowDownAi = useCallback(() => {
+		const currentIndex = VALID_INTERVALS.indexOf(aiInterval);
+		if (currentIndex < VALID_INTERVALS.length - 1) {
+			const newInterval = VALID_INTERVALS[currentIndex + 1];
+			console.log(`[2048] AI 间隔调整: ${aiInterval}秒 -> ${newInterval}秒`);
+			setAiInterval(newInterval);
+		}
+	}, [aiInterval]);
+
+	/**
 	 * 开始新游戏
 	 */
 	const startNewGame = useCallback(() => {
 		console.log('[2048] 开始新游戏');
+		// 如果 AI 模式正在运行，先停止
+		if (isAiMode) {
+			stopAiMode();
+		}
 		setGrid(initializeGame(gridSize));
 		setGameStarted(false);
 		setGameOver(false);
 		setAchievedTargets(new Set());
 		setCurrentTarget(null);
-	}, [gridSize]);
+	}, [gridSize, isAiMode, stopAiMode]);
 
 	/**
 	 * 处理移动
 	 */
 	const handleMove = useCallback(
-		(direction: Direction) => {
+		(direction: Direction, isAiMove: boolean = false) => {
+			// AI 模式下，只有 AI 可以移动
+			if (!isAiMove && isAiMode) {
+				console.log('[2048] AI 模式下，用户操作被禁用');
+				return;
+			}
+
 			if (isAnimating || gameOver) {
 				return;
 			}
 
-			console.log(`[2048] 移动方向: ${direction}`);
+			console.log(`[2048] 移动方向: ${direction}${isAiMove ? ' (AI)' : ''}`);
 
 			setGrid((prevGrid) => {
 				const { grid: newGrid, moved } = moveGrid(prevGrid, direction);
@@ -354,7 +460,7 @@ export default function Game2048() {
 				setIsAnimating(false);
 			}, 200);
 		},
-		[isAnimating, gameOver, gameStarted, achievedTargets]
+		[isAnimating, gameOver, gameStarted, achievedTargets, isAiMode]
 	);
 
 	/**
@@ -362,6 +468,11 @@ export default function Game2048() {
 	 */
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			// AI 模式下禁用键盘操作
+			if (isAiMode) {
+				return;
+			}
+
 			if (isAnimating) {
 				return;
 			}
@@ -390,7 +501,7 @@ export default function Game2048() {
 		return () => {
 			window.removeEventListener('keydown', handleKeyDown);
 		};
-	}, [handleMove, isAnimating]);
+	}, [handleMove, isAnimating, isAiMode]);
 
 	/**
 	 * 处理触摸事件
@@ -404,6 +515,12 @@ export default function Game2048() {
 
 	const handleTouchEnd = useCallback(
 		(e: React.TouchEvent) => {
+			// AI 模式下禁用触摸操作
+			if (isAiMode) {
+				touchStartRef.current = null;
+				return;
+			}
+
 			if (!touchStartRef.current) {
 				return;
 			}
@@ -439,7 +556,7 @@ export default function Game2048() {
 
 			touchStartRef.current = null;
 		},
-		[handleMove]
+		[handleMove, isAiMode]
 	);
 
 	/**
@@ -448,6 +565,134 @@ export default function Game2048() {
 	const closeTargetModal = useCallback(() => {
 		setCurrentTarget(null);
 	}, []);
+
+	/**
+	 * AI 执行移动（内部函数，直接操作状态）
+	 */
+	const aiExecuteMove = useCallback(() => {
+		if (!isAiMode || gameOver || isAnimating) {
+			return;
+		}
+
+		setGrid((prevGrid) => {
+			// AI 决策
+			const direction = aiDecideMove(prevGrid);
+			if (!direction) {
+				console.log('[2048] AI 无法找到有效移动，退出 AI 模式');
+				stopAiMode();
+				return prevGrid;
+			}
+
+			console.log(`[2048] AI 决策: ${direction}`);
+
+			// 显示按钮按下状态
+			setAiActiveDirection(direction);
+
+			// 执行移动
+			const { grid: newGrid, moved } = moveGrid(prevGrid, direction);
+
+			if (!moved) {
+				console.log('[2048] AI 移动失败');
+				setAiActiveDirection(null);
+				return prevGrid;
+			}
+
+			// 标记游戏已开始
+			if (!gameStarted) {
+				setGameStarted(true);
+			}
+
+			// 添加新数字
+			const withNewTile = addRandomTile(newGrid);
+
+			// 清除动画标记
+			setTimeout(() => {
+				setGrid((prevGrid) =>
+					prevGrid.map((row) =>
+						row.map((cell) => {
+							const newCell = { ...cell };
+							delete newCell.merged;
+							delete newCell.newCell;
+							return newCell;
+						})
+					)
+				);
+				setAiActiveDirection(null);
+			}, 300);
+
+			// 检查是否达到目标
+			const newTarget = checkTarget(withNewTile, achievedTargets);
+			if (newTarget) {
+				console.log(`[2048] AI 达成目标: ${newTarget}`);
+				setAchievedTargets((prev) => new Set([...prev, newTarget]));
+				setCurrentTarget(newTarget);
+			}
+
+			// 检查游戏是否结束
+			setTimeout(() => {
+				if (!canMove(withNewTile)) {
+					console.log('[2048] AI 游戏结束');
+					setGameOver(true);
+				}
+			}, 300);
+
+			// 设置动画状态
+			setIsAnimating(true);
+			setTimeout(() => {
+				setIsAnimating(false);
+			}, 200);
+
+			return withNewTile;
+		});
+	}, [isAiMode, gameOver, isAnimating, gameStarted, achievedTargets, stopAiMode]);
+
+	/**
+	 * AI 自动执行逻辑
+	 */
+	useEffect(() => {
+		if (!isAiMode) {
+			// 清理定时器
+			if (aiIntervalRef.current) {
+				clearInterval(aiIntervalRef.current);
+				aiIntervalRef.current = null;
+			}
+			setAiActiveDirection(null);
+			return;
+		}
+
+		// 如果游戏结束，自动退出 AI 模式
+		if (gameOver) {
+			console.log('[2048] 游戏结束，自动退出 AI 模式');
+			stopAiMode();
+			return;
+		}
+
+		// 如果正在显示目标达成提示，等待3秒后自动关闭
+		if (currentTarget) {
+			const timer = setTimeout(() => {
+				console.log('[2048] AI 模式：自动关闭目标达成提示');
+				closeTargetModal();
+			}, 3000);
+			return () => clearTimeout(timer);
+		}
+
+		// 如果正在动画中，不执行 AI 移动
+		if (isAnimating) {
+			return;
+		}
+
+		// 设置定时器，使用动态间隔时间
+		aiIntervalRef.current = setInterval(() => {
+			aiExecuteMove();
+		}, aiInterval * 1000); // 转换为毫秒
+
+		return () => {
+			if (aiIntervalRef.current) {
+				clearInterval(aiIntervalRef.current);
+				aiIntervalRef.current = null;
+			}
+		};
+	}, [isAiMode, gameOver, currentTarget, isAnimating, stopAiMode, closeTargetModal, aiExecuteMove, aiInterval]);
 
 	return (
 		<div className="game2048">
@@ -520,20 +765,63 @@ export default function Game2048() {
 				</div>
 
 				<div className="game2048-controls-panel">
-					<button onClick={() => handleMove('up')} className="game2048-direction-btn" disabled={isAnimating || gameOver}>
+					<button
+						onClick={() => handleMove('up')}
+						className={`game2048-direction-btn ${aiActiveDirection === 'up' ? 'game2048-direction-btn-active' : ''}`}
+						disabled={isAnimating || gameOver || isAiMode}
+					>
 						↑
 					</button>
 					<div className="game2048-controls-horizontal">
-						<button onClick={() => handleMove('left')} className="game2048-direction-btn" disabled={isAnimating || gameOver}>
+						<button
+							onClick={() => handleMove('left')}
+							className={`game2048-direction-btn ${aiActiveDirection === 'left' ? 'game2048-direction-btn-active' : ''}`}
+							disabled={isAnimating || gameOver || isAiMode}
+						>
 							←
 						</button>
-						<button onClick={() => handleMove('down')} className="game2048-direction-btn" disabled={isAnimating || gameOver}>
+						<button
+							onClick={() => handleMove('down')}
+							className={`game2048-direction-btn ${aiActiveDirection === 'down' ? 'game2048-direction-btn-active' : ''}`}
+							disabled={isAnimating || gameOver || isAiMode}
+						>
 							↓
 						</button>
-						<button onClick={() => handleMove('right')} className="game2048-direction-btn" disabled={isAnimating || gameOver}>
+						<button
+							onClick={() => handleMove('right')}
+							className={`game2048-direction-btn ${aiActiveDirection === 'right' ? 'game2048-direction-btn-active' : ''}`}
+							disabled={isAnimating || gameOver || isAiMode}
+						>
 							→
 						</button>
 					</div>
+					<button
+						onClick={isAiMode ? stopAiMode : startAiMode}
+						className="game2048-btn game2048-btn-ai"
+						disabled={gameOver}
+					>
+						{isAiMode ? '停止 AI 模式' : '让 AI 玩'}
+					</button>
+					{isAiMode && (
+						<div className="game2048-ai-speed-controls">
+							<button
+								onClick={speedUpAi}
+								className="game2048-btn game2048-btn-speed"
+								disabled={aiInterval <= MIN_INTERVAL}
+								title={`当前间隔: ${aiInterval}秒`}
+							>
+								快一点
+							</button>
+							<button
+								onClick={slowDownAi}
+								className="game2048-btn game2048-btn-speed"
+								disabled={aiInterval >= MAX_INTERVAL}
+								title={`当前间隔: ${aiInterval}秒`}
+							>
+								慢一点
+							</button>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

@@ -289,6 +289,46 @@
 	cursor: not-allowed;
 }
 
+.game2048-direction-btn-active {
+	background: #667eea !important;
+	color: white !important;
+	transform: translateY(0) !important;
+	box-shadow: 0 2px 4px rgba(102, 126, 234, 0.5) !important;
+}
+
+.game2048-btn-ai {
+	margin-top: 16px;
+	background: #10b981;
+	color: white;
+}
+
+.game2048-btn-ai:hover:not(:disabled) {
+	background: #059669;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+}
+
+.game2048-ai-speed-controls {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+	width: 100%;
+}
+
+.game2048-btn-speed {
+	flex: 1;
+	background: #6b7280;
+	color: white;
+	font-size: 14px;
+	padding: 8px 16px;
+}
+
+.game2048-btn-speed:hover:not(:disabled) {
+	background: #4b5563;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 8px rgba(107, 114, 128, 0.3);
+}
+
 /* 游戏结束提示 */
 .game2048-game-over {
 	position: fixed;
