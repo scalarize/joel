@@ -104,7 +104,7 @@ function rotateGrid(grid: Cell[][], times: number): Cell[][] {
 /**
  * 向左移动并合并
  */
-function moveLeft(grid: Cell[][]): { grid: Cell[][]; moved: boolean } {
+function moveLeft(grid: Cell[][]): { grid: Cell[][]; moved: boolean; score: number } {
 	const size = grid.length;
 	const newGrid: Cell[][] = Array(size)
 		.fill(null)
@@ -114,6 +114,7 @@ function moveLeft(grid: Cell[][]): { grid: Cell[][]; moved: boolean } {
 				.map(() => ({ value: 0, id: generateId() }))
 		);
 	let moved = false;
+	let score = 0;
 
 	for (let row = 0; row < size; row++) {
 		const line: Cell[] = [];
@@ -128,11 +129,14 @@ function moveLeft(grid: Cell[][]): { grid: Cell[][]; moved: boolean } {
 		const merged: Cell[] = [];
 		for (let i = 0; i < line.length; i++) {
 			if (i < line.length - 1 && line[i].value === line[i + 1].value) {
+				const mergedValue = line[i].value * 2;
 				merged.push({
-					value: line[i].value * 2,
+					value: mergedValue,
 					id: generateId(),
 					merged: true,
 				});
+				// 合并产生的分数 = 合并后的数字值
+				score += mergedValue;
 				i++; // 跳过下一个，因为已经合并
 				moved = true;
 			} else {
@@ -151,13 +155,13 @@ function moveLeft(grid: Cell[][]): { grid: Cell[][]; moved: boolean } {
 		}
 	}
 
-	return { grid: newGrid, moved };
+	return { grid: newGrid, moved, score };
 }
 
 /**
  * 移动网格
  */
-function moveGrid(grid: Cell[][], direction: Direction): { grid: Cell[][]; moved: boolean } {
+function moveGrid(grid: Cell[][], direction: Direction): { grid: Cell[][]; moved: boolean; score: number } {
 	let rotated = grid;
 	let rotateTimes = 0;
 
@@ -183,7 +187,7 @@ function moveGrid(grid: Cell[][], direction: Direction): { grid: Cell[][]; moved
 	}
 
 	// 向左移动
-	const { grid: movedGrid, moved } = moveLeft(rotated);
+	const { grid: movedGrid, moved, score } = moveLeft(rotated);
 
 	// 旋转回来
 	let result = movedGrid;
@@ -191,7 +195,7 @@ function moveGrid(grid: Cell[][], direction: Direction): { grid: Cell[][]; moved
 		result = rotateGrid(result, 1);
 	}
 
-	return { grid: result, moved };
+	return { grid: result, moved, score };
 }
 
 /**
@@ -537,6 +541,7 @@ export default function Game2048() {
 	const [gameStarted, setGameStarted] = useState(false);
 	const [gameOver, setGameOver] = useState(false);
 	const [showGameOverModal, setShowGameOverModal] = useState(false);
+	const [score, setScore] = useState(0);
 	const [achievedTargets, setAchievedTargets] = useState<Set<number>>(new Set());
 	const [currentTarget, setCurrentTarget] = useState<number | null>(null);
 	const [isAnimating, setIsAnimating] = useState(false);
@@ -571,6 +576,7 @@ export default function Game2048() {
 		setGrid(initializeGame(nextSize));
 		setGameOver(false);
 		setShowGameOverModal(false);
+		setScore(0);
 		setAchievedTargets(new Set());
 		setCurrentTarget(null);
 	}, [gridSize, gameStarted]);
@@ -635,6 +641,7 @@ export default function Game2048() {
 		setGameStarted(false);
 		setGameOver(false);
 		setShowGameOverModal(false);
+		setScore(0);
 		setAchievedTargets(new Set());
 		setCurrentTarget(null);
 	}, [gridSize, isAiMode, stopAiMode]);
@@ -657,12 +664,19 @@ export default function Game2048() {
 			console.log(`[2048] 移动方向: ${direction}${isAiMove ? ' (AI)' : ''}`);
 
 			setGrid((prevGrid) => {
-				const { grid: newGrid, moved } = moveGrid(prevGrid, direction);
+				const { grid: newGrid, moved, score: moveScore } = moveGrid(prevGrid, direction);
 
 				if (!moved) {
 					console.log('[2048] 无法移动');
 					return prevGrid;
 				}
+
+				// 累加分数
+				setScore((prevScore) => {
+					const newScore = prevScore + moveScore;
+					console.log(`[2048] 本次移动得分: ${moveScore}, 总分: ${newScore}`);
+					return newScore;
+				});
 
 				// 标记游戏已开始
 				if (!gameStarted) {
@@ -849,13 +863,17 @@ export default function Game2048() {
 			setAiActiveDirection(direction);
 
 			// 执行移动
-			const { grid: newGrid, moved } = moveGrid(prevGrid, direction);
+			const { grid: newGrid, moved, score: moveScore } = moveGrid(prevGrid, direction);
 
 			if (!moved) {
 				console.log('[2048] AI 移动失败');
 				setAiActiveDirection(null);
 				return prevGrid;
 			}
+
+			// 累加分数
+			setScore((prevScore) => prevScore + moveScore);
+			console.log(`[2048] AI 本次移动得分: ${moveScore}`);
 
 			// 标记游戏已开始
 			if (!gameStarted) {
@@ -959,6 +977,10 @@ export default function Game2048() {
 		<div className="game2048">
 			<div className="game2048-header">
 				<h2>2048</h2>
+				<div className="game2048-score">
+					<div className="game2048-score-label">得分</div>
+					<div className="game2048-score-value">{score.toLocaleString()}</div>
+				</div>
 				<div className="game2048-controls">
 					<button onClick={startNewGame} className="game2048-btn game2048-btn-primary">
 						新游戏

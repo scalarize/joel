@@ -10,8 +10,8 @@
 }
 
 .game2048-header {
-	display: flex;
-	justify-content: space-between;
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
 	align-items: center;
 	margin-bottom: 24px;
 	padding-bottom: 16px;
@@ -23,11 +23,34 @@
 	font-size: 28px;
 	font-weight: 600;
 	color: #333;
+	justify-self: start;
+}
+
+.game2048-score {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-self: center;
+	gap: 8px;
+}
+
+.game2048-score-label {
+	font-size: 14px;
+	color: #666;
+	font-weight: 500;
+	margin: 0;
+}
+
+.game2048-score-value {
+	font-size: 24px;
+	font-weight: 700;
+	color: #333;
 }
 
 .game2048-controls {
 	display: flex;
 	gap: 12px;
+	justify-self: end;
 }
 
 .game2048-btn {
