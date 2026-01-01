@@ -209,6 +209,12 @@ function canMove(grid: Cell[][]): boolean {
 		}
 	}
 
+	return hasAnyMovePossible(grid);
+}
+
+function hasAnyMovePossible(grid: Cell[][]): boolean {
+	const size = grid.length;
+
 	// 检查是否有相邻的相同数字
 	for (let row = 0; row < size; row++) {
 		for (let col = 0; col < size; col++) {
@@ -271,37 +277,68 @@ function countEmptyTiles(grid: Cell[][]): number {
 }
 
 /**
- * 计算最大数字的聚角惩罚分
- * 惩罚大数字远离左上角
+ * 统一的定向聚集奖励函数
+ * 奖励大数字们不仅彼此靠近，并且集体朝向目标角落聚集。
+ * @param grid 4x4游戏网格
+ * @param targetCorner 目标角落的坐标，默认为左上角 [0, 0]
+ * @param topN 考虑的最大数字数量
+ * @returns 奖励分数（正数），越符合“定向聚集”，奖励越高
  */
-function getMaxTileCornerPenalty(grid: Cell[][]): number {
-	let maxValue = 0;
-	let maxRow = 0;
-	let maxCol = 0;
+function getDirectedClusterBonus(grid: Cell[][], targetCorner: [number, number] = [0, 0], topN: number = 4): number {
+	const [targetRow, targetCol] = targetCorner;
+	const tiles: { value: number; row: number; col: number }[] = [];
 
-	// 找到最大数值及其位置
-	for (let row = 0; row < grid.length; row++) {
-		for (let col = 0; col < grid[row].length; col++) {
-			const value = grid[row][col].value;
-			if (value > maxValue) {
-				maxValue = value;
-				maxRow = row;
-				maxCol = col;
+	// 1. 收集所有非空单元格
+	for (let r = 0; r < grid.length; r++) {
+		for (let c = 0; c < grid[r].length; c++) {
+			const val = grid[r][c].value;
+			if (val !== 0) {
+				tiles.push({ value: val, row: r, col: c });
 			}
 		}
 	}
 
-	// 如果 maxValue 为 0（所有格子都是空的），则惩罚为 0
-	if (maxValue === 0) {
-		return 0;
+	// 2. 按值排序，取前 topN 个
+	tiles.sort((a, b) => b.value - a.value);
+	const clusterTiles = tiles.slice(0, Math.min(topN, tiles.length));
+
+	if (clusterTiles.length < 2) {
+		return 15; // 基础奖励，鼓励继续游戏
 	}
 
-	// 计算聚角惩罚分
-	// maxValue 的权重：使用 log2 使其线性增长（因为数值是指数增长的）
-	const maxValueWeight = Math.log2(maxValue);
-	const penalty = (maxRow + maxCol) * 10 * maxValueWeight;
+	// 3. 计算【集群内聚度】惩罚：集群内部两两距离和
+	let internalDispersion = 0;
+	for (let i = 0; i < clusterTiles.length; i++) {
+		for (let j = i + 1; j < clusterTiles.length; j++) {
+			internalDispersion += Math.abs(clusterTiles[i].row - clusterTiles[j].row) + Math.abs(clusterTiles[i].col - clusterTiles[j].col);
+		}
+	}
 
-	return penalty;
+	// 4. 计算【集群方位度】惩罚：集群平均位置到目标角落的距离
+	let avgRow = 0,
+		avgCol = 0;
+	let totalValue = 0;
+	// 按值加权平均，让大数在计算平均位置时更有话语权
+	for (const tile of clusterTiles) {
+		avgRow += tile.row * tile.value;
+		avgCol += tile.col * tile.value;
+		totalValue += tile.value;
+	}
+	avgRow /= totalValue;
+	avgCol /= totalValue;
+
+	const distanceToTarget = Math.abs(avgRow - targetRow) + Math.abs(avgCol - targetCol);
+
+	// 5. 综合计算总惩罚
+	// 权重系数是调参关键：CLUSTER_WEIGHT 控制内聚重要性，TARGET_WEIGHT 控制方位重要性
+	const CLUSTER_WEIGHT = 1; // 对内聚的重视程度
+	const TARGET_WEIGHT = 3; // 对朝向目标的重视程度（建议 > 1）
+	const totalPenalty = internalDispersion * CLUSTER_WEIGHT + distanceToTarget * TARGET_WEIGHT;
+
+	// 6. 将总惩罚转换为奖励（惩罚越小，奖励越高）
+	const BASE = 200;
+	const bonus = BASE / (totalPenalty + 1);
+	return bonus;
 }
 
 /**
@@ -410,13 +447,23 @@ function getImmediateMergeBonus(oldGrid: Cell[][], newGrid: Cell[][]): number {
  * 3. 平滑度惩罚（相邻数字差异大会被惩罚）
  */
 function evaluateGrid(grid: Cell[][]): number {
-	const emptyCount = countEmptyTiles(grid);
-	const cornerPenalty = getMaxTileCornerPenalty(grid);
-	const smoothnessPenalty = getSmoothnessPenalty(grid);
+	const CLUSTERED_WEIGHT = 100;
+	const SMOOTHNESS_WEIGHT = -5;
+	const EMPTY_WEIGHT = 20;
 
-	// 最终评估分数
-	const score = emptyCount * 50 - cornerPenalty * 20 - smoothnessPenalty * 5;
+	// 1. 【战略层】大数聚集度（高权重）：替代“聚角惩罚”，驱动长期布局
+	const closenessBonus = getDirectedClusterBonus(grid) * CLUSTERED_WEIGHT; // 高，如 100
 
+	// 2. 【战术层】棋盘有序性（中权重）：保证合并流畅
+	const smoothnessPenalty = getSmoothnessPenalty(grid) * SMOOTHNESS_WEIGHT; // 中，如 -5
+
+	// 3. 【资源层】操作空间（低权重）：必要但不可过度
+	const emptyCount = countEmptyTiles(grid) * EMPTY_WEIGHT; // 低，从 100 降至 20-30
+
+	// 4. 【攻击层】即时机会（中高权重）：鼓励积极合并
+	// （注：此部分在 aiDecideMove 中与方向相关，不在此函数内）
+
+	const score = closenessBonus + emptyCount - smoothnessPenalty;
 	return score;
 }
 
@@ -424,31 +471,64 @@ function evaluateGrid(grid: Cell[][]): number {
  * AI 决策函数：测试四个方向，返回分数最高的方向
  */
 function aiDecideMove(grid: Cell[][]): Direction | null {
-	const directions: Direction[] = ['up', 'down', 'left', 'right'];
+	const MERGE_WEIGHT = 10;
+
+	// === 第一优先级：安全合并最大数的机会 ===
+	const maxTile = grid.flat().reduce((max, cell) => Math.max(max, cell.value), 0);
+	const safeMaxMergeMoves: Direction[] = [];
+
+	const directions: Direction[] = shuffleArray(['up', 'down', 'left', 'right']);
 	let bestDirection: Direction | null = null;
-	let bestScore = -99999;
+	let bestScore = -Infinity;
+
+	// 没有移动的惩罚值
+	const NO_MOVE_PENALTY = -10000;
 
 	for (const direction of directions) {
 		const { grid: newGrid, moved } = moveGrid(grid, direction);
-		if (moved) {
-			// 计算即时合并奖励（在添加新数字之前）
-			const mergeBonus = getImmediateMergeBonus(grid, newGrid);
+		if (!moved) continue;
 
-			// 模拟添加新数字（添加一个随机数字）
-			const withNewTile = addRandomTile(newGrid);
-			const score = evaluateGrid(withNewTile);
+		const newMaxTile = newGrid.flat().reduce((max, cell) => Math.max(max, cell.value), 0);
+		if (newMaxTile > maxTile && hasAnyMovePossible(newGrid)) {
+			safeMaxMergeMoves.push(direction);
+		}
 
-			// 最终分数 = 评估分数 + 合并奖励 * 5
-			const finalScore = score + mergeBonus * 10;
-
-			if (finalScore > bestScore) {
-				bestScore = finalScore;
-				bestDirection = direction;
+		// === 唯一的、绝对的风险检查 ===
+		if (!hasAnyMovePossible(newGrid)) {
+			// 此移动将导致“听天由命”的局面，给予重罚
+			if (NO_MOVE_PENALTY > bestScore) {
+				bestScore = NO_MOVE_PENALTY;
+				bestDirection = direction; // 记录这个“最不坏”的坏方向
 			}
+			continue;
+		}
+
+		// === 正常评估：只基于我们100%可控的 newGrid ===
+		// 计算即时合并奖励
+		const mergeBonus = getImmediateMergeBonus(grid, newGrid);
+		const evalScore = evaluateGrid(newGrid);
+		const finalScore = evalScore + mergeBonus * MERGE_WEIGHT;
+
+		if (finalScore > bestScore) {
+			bestScore = finalScore;
+			bestDirection = direction;
 		}
 	}
 
+	if (safeMaxMergeMoves.length > 0) {
+		return safeMaxMergeMoves[Math.floor(Math.random() * safeMaxMergeMoves.length)];
+	}
+
 	return bestDirection;
+}
+
+function shuffleArray<T>(array: T[]): T[] {
+	const shuffled = [...array]; // 创建副本，避免修改原数组
+	for (let i = shuffled.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1)); // 生成 [0, i] 的随机索引
+		[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]; // 交换元素
+	}
+	return shuffled;
 }
 
 export default function Game2048() {
