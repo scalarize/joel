@@ -375,11 +375,7 @@ function App() {
 						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
 				) : path === '/mini-games' ? (
-					user ? (
-						<MiniGames />
-					) : (
-						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
-					)
+					<MiniGames />
 				) : path === '/mini-games/puzzler' ? (
 					<Puzzler />
 				) : path === '/mini-games/puzzler/gallery' ? (
