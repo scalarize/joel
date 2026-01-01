@@ -27,14 +27,14 @@ const heurScoreTable: Float64Array = new Float64Array(NUM_ROWS); // 原C代码�
 /**
  * 将行（16位）反序（用于右移/下移查表）
  */
-function reverseRow(row: number): number {
+export function reverseRow(row: number): number {
 	return ((row >> 12) & 0x000f) | ((row >> 4) & 0x00f0) | ((row << 4) & 0x0f00) | ((row << 12) & 0xf000);
 }
 
 /**
  * 将行展开为列（用于上下移动查表）
  */
-function unpackCol(row: number): bigint {
+export function unpackCol(row: number): bigint {
 	return BigInt(
 		((row & 0x0001) << 0) |
 			((row & 0x0010) << 3) |
