@@ -29,7 +29,11 @@ function generateId(): string {
 function createEmptyGrid(size: GridSize): Cell[][] {
 	return Array(size)
 		.fill(null)
-		.map(() => Array(size).fill(null).map(() => ({ value: 0, id: generateId() })));
+		.map(() =>
+			Array(size)
+				.fill(null)
+				.map(() => ({ value: 0, id: generateId() }))
+		);
 }
 
 /**
@@ -81,7 +85,11 @@ function rotateGrid(grid: Cell[][], times: number): Cell[][] {
 		const size = rotated.length;
 		const newGrid: Cell[][] = Array(size)
 			.fill(null)
-			.map(() => Array(size).fill(null).map(() => ({ value: 0, id: generateId() })));
+			.map(() =>
+				Array(size)
+					.fill(null)
+					.map(() => ({ value: 0, id: generateId() }))
+			);
 
 		for (let row = 0; row < size; row++) {
 			for (let col = 0; col < size; col++) {
@@ -100,7 +108,11 @@ function moveLeft(grid: Cell[][]): { grid: Cell[][]; moved: boolean } {
 	const size = grid.length;
 	const newGrid: Cell[][] = Array(size)
 		.fill(null)
-		.map(() => Array(size).fill(null).map(() => ({ value: 0, id: generateId() })));
+		.map(() =>
+			Array(size)
+				.fill(null)
+				.map(() => ({ value: 0, id: generateId() }))
+		);
 	let moved = false;
 
 	for (let row = 0; row < size; row++) {
@@ -244,10 +256,9 @@ function checkTarget(grid: Cell[][], achievedTargets: Set<number>): number | nul
 }
 
 /**
- * AI 评估函数：评估当前游戏状态的分数
- * 目前实现：返回空位的数量
+ * 计算空位数量
  */
-function evaluateGrid(grid: Cell[][]): number {
+function countEmptyTiles(grid: Cell[][]): number {
 	let emptyCount = 0;
 	for (let row = 0; row < grid.length; row++) {
 		for (let col = 0; col < grid[row].length; col++) {
@@ -260,21 +271,178 @@ function evaluateGrid(grid: Cell[][]): number {
 }
 
 /**
+ * 计算最大数字的聚角惩罚分
+ * 惩罚大数字远离左上角
+ */
+function getMaxTileCornerPenalty(grid: Cell[][]): number {
+	let maxValue = 0;
+	let maxRow = 0;
+	let maxCol = 0;
+
+	// 找到最大数值及其位置
+	for (let row = 0; row < grid.length; row++) {
+		for (let col = 0; col < grid[row].length; col++) {
+			const value = grid[row][col].value;
+			if (value > maxValue) {
+				maxValue = value;
+				maxRow = row;
+				maxCol = col;
+			}
+		}
+	}
+
+	// 如果 maxValue 为 0（所有格子都是空的），则惩罚为 0
+	if (maxValue === 0) {
+		return 0;
+	}
+
+	// 计算聚角惩罚分
+	// maxValue 的权重：使用 log2 使其线性增长（因为数值是指数增长的）
+	const maxValueWeight = Math.log2(maxValue);
+	const penalty = (maxRow + maxCol) * 10 * maxValueWeight;
+
+	return penalty;
+}
+
+/**
+ * 计算当前网格的"平滑度惩罚"分数
+ * 惩罚值越高，表示棋盘越不平滑，局面越差
+ */
+function getSmoothnessPenalty(grid: Cell[][]): number {
+	let penalty = 0;
+	const size = grid.length;
+
+	// 1. 计算水平方向（行内）的相邻差异
+	for (let row = 0; row < size; row++) {
+		for (let col = 0; col < size - 1; col++) {
+			const current = grid[row][col].value;
+			const right = grid[row][col + 1].value;
+			if (current !== 0 && right !== 0) {
+				// 使用log2使得"4与8"和"32与64"的差异度相同
+				penalty += Math.abs(Math.log2(current) - Math.log2(right));
+			}
+		}
+	}
+
+	// 2. 计算垂直方向（列内）的相邻差异
+	for (let col = 0; col < size; col++) {
+		for (let row = 0; row < size - 1; row++) {
+			const current = grid[row][col].value;
+			const down = grid[row + 1][col].value;
+			if (current !== 0 && down !== 0) {
+				penalty += Math.abs(Math.log2(current) - Math.log2(down));
+			}
+		}
+	}
+
+	return penalty;
+}
+
+/**
+ * 比较两个网格是否相同（仅比较值）
+ */
+function gridsEqual(grid1: Cell[][], grid2: Cell[][]): boolean {
+	if (grid1.length !== grid2.length) {
+		return false;
+	}
+	for (let row = 0; row < grid1.length; row++) {
+		if (grid1[row].length !== grid2[row].length) {
+			return false;
+		}
+		for (let col = 0; col < grid1[row].length; col++) {
+			if (grid1[row][col].value !== grid2[row][col].value) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+/**
+ * 计算一次移动后，新产生的合并所带来的奖励分数
+ */
+function getImmediateMergeBonus(oldGrid: Cell[][], newGrid: Cell[][]): number {
+	// 如果没有变化（无效移动），奖励为0
+	if (gridsEqual(oldGrid, newGrid)) {
+		return 0;
+	}
+
+	let bonus = 0;
+	const size = newGrid.length;
+
+	// 关键逻辑：只在"新网格"中寻找相邻的相等格子
+	for (let row = 0; row < size; row++) {
+		for (let col = 0; col < size; col++) {
+			const current = newGrid[row][col].value;
+			if (current === 0) continue; // 跳过空格
+
+			// 检查右侧邻居（避免重复计算，每对只算一次）
+			if (col < size - 1 && newGrid[row][col + 1].value === current) {
+				// 奖励与合并产生的数值成正比
+				bonus += current; // 例如，合并两个4得到8，奖励+4+4=8
+				col++; // 跳过已匹配的这对格子的下一个，防止重复计算
+			}
+		}
+	}
+
+	// 检查垂直方向（列内）的相邻相等格子
+	for (let col = 0; col < size; col++) {
+		for (let row = 0; row < size; row++) {
+			const current = newGrid[row][col].value;
+			if (current === 0) continue; // 跳过空格
+
+			// 检查下方邻居
+			if (row < size - 1 && newGrid[row + 1][col].value === current) {
+				bonus += current;
+				row++; // 跳过已匹配的这对格子的下一个，防止重复计算
+			}
+		}
+	}
+
+	return bonus;
+}
+
+/**
+ * AI 评估函数：评估当前游戏状态的分数
+ * 综合多个因素：
+ * 1. 空位数量（越多越好）
+ * 2. 最大数字聚角惩罚（大数远离左上角会被惩罚）
+ * 3. 平滑度惩罚（相邻数字差异大会被惩罚）
+ */
+function evaluateGrid(grid: Cell[][]): number {
+	const emptyCount = countEmptyTiles(grid);
+	const cornerPenalty = getMaxTileCornerPenalty(grid);
+	const smoothnessPenalty = getSmoothnessPenalty(grid);
+
+	// 最终评估分数
+	const score = emptyCount * 50 - cornerPenalty * 20 - smoothnessPenalty * 5;
+
+	return score;
+}
+
+/**
  * AI 决策函数：测试四个方向，返回分数最高的方向
  */
 function aiDecideMove(grid: Cell[][]): Direction | null {
 	const directions: Direction[] = ['up', 'down', 'left', 'right'];
 	let bestDirection: Direction | null = null;
-	let bestScore = -1;
+	let bestScore = -99999;
 
 	for (const direction of directions) {
 		const { grid: newGrid, moved } = moveGrid(grid, direction);
 		if (moved) {
+			// 计算即时合并奖励（在添加新数字之前）
+			const mergeBonus = getImmediateMergeBonus(grid, newGrid);
+
 			// 模拟添加新数字（添加一个随机数字）
 			const withNewTile = addRandomTile(newGrid);
 			const score = evaluateGrid(withNewTile);
-			if (score > bestScore) {
-				bestScore = score;
+
+			// 最终分数 = 评估分数 + 合并奖励 * 5
+			const finalScore = score + mergeBonus * 10;
+
+			if (finalScore > bestScore) {
+				bestScore = finalScore;
 				bestDirection = direction;
 			}
 		}
@@ -288,6 +456,7 @@ export default function Game2048() {
 	const [gridSize, setGridSize] = useState<GridSize>(4);
 	const [gameStarted, setGameStarted] = useState(false);
 	const [gameOver, setGameOver] = useState(false);
+	const [showGameOverModal, setShowGameOverModal] = useState(false);
 	const [achievedTargets, setAchievedTargets] = useState<Set<number>>(new Set());
 	const [currentTarget, setCurrentTarget] = useState<number | null>(null);
 	const [isAnimating, setIsAnimating] = useState(false);
@@ -296,7 +465,7 @@ export default function Game2048() {
 	const [aiInterval, setAiInterval] = useState<number>(1); // AI 执行间隔（秒）
 	const gameAreaRef = useRef<HTMLDivElement>(null);
 	const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-	const aiIntervalRef = useRef<NodeJS.Timeout | null>(null);
+	const aiIntervalRef = useRef<number | null>(null);
 
 	// 合法的间隔时间（秒）
 	const VALID_INTERVALS = [0.1, 0.2, 0.5, 1, 2, 3];
@@ -321,6 +490,7 @@ export default function Game2048() {
 		setGridSize(nextSize);
 		setGrid(initializeGame(nextSize));
 		setGameOver(false);
+		setShowGameOverModal(false);
 		setAchievedTargets(new Set());
 		setCurrentTarget(null);
 	}, [gridSize, gameStarted]);
@@ -384,6 +554,7 @@ export default function Game2048() {
 		setGrid(initializeGame(gridSize));
 		setGameStarted(false);
 		setGameOver(false);
+		setShowGameOverModal(false);
 		setAchievedTargets(new Set());
 		setCurrentTarget(null);
 	}, [gridSize, isAiMode, stopAiMode]);
@@ -448,6 +619,7 @@ export default function Game2048() {
 					if (!canMove(withNewTile)) {
 						console.log('[2048] 游戏结束');
 						setGameOver(true);
+						setShowGameOverModal(true);
 					}
 				}, 300); // 等待动画完成
 
@@ -567,6 +739,14 @@ export default function Game2048() {
 	}, []);
 
 	/**
+	 * 关闭游戏结束弹窗（但保持 gameOver 状态，让用户可以查看最终状态）
+	 */
+	const closeGameOverModal = useCallback(() => {
+		console.log('[2048] 关闭游戏结束弹窗');
+		setShowGameOverModal(false);
+	}, []);
+
+	/**
 	 * AI 执行移动（内部函数，直接操作状态）
 	 */
 	const aiExecuteMove = useCallback(() => {
@@ -633,6 +813,7 @@ export default function Game2048() {
 				if (!canMove(withNewTile)) {
 					console.log('[2048] AI 游戏结束');
 					setGameOver(true);
+					setShowGameOverModal(true);
 				}
 			}, 300);
 
@@ -713,9 +894,9 @@ export default function Game2048() {
 				</div>
 			</div>
 
-			{gameOver && (
-				<div className="game2048-game-over">
-					<div className="game2048-game-over-content">
+			{gameOver && showGameOverModal && (
+				<div className="game2048-game-over" onClick={closeGameOverModal}>
+					<div className="game2048-game-over-content" onClick={(e) => e.stopPropagation()}>
 						<h3>游戏结束</h3>
 						<p>无法继续移动</p>
 						<button onClick={startNewGame} className="game2048-btn game2048-btn-primary">
@@ -753,7 +934,9 @@ export default function Game2048() {
 							<div key={`${rowIndex}-${colIndex}`} className="game2048-cell">
 								{cell.value !== 0 && (
 									<div
-										className={`game2048-tile game2048-tile-${cell.value} ${cell.merged ? 'game2048-tile-merged' : ''} ${cell.newCell ? 'game2048-tile-new' : ''}`}
+										className={`game2048-tile game2048-tile-${cell.value} ${cell.merged ? 'game2048-tile-merged' : ''} ${
+											cell.newCell ? 'game2048-tile-new' : ''
+										}`}
 										key={cell.id}
 									>
 										{cell.value}
@@ -795,11 +978,7 @@ export default function Game2048() {
 							→
 						</button>
 					</div>
-					<button
-						onClick={isAiMode ? stopAiMode : startAiMode}
-						className="game2048-btn game2048-btn-ai"
-						disabled={gameOver}
-					>
+					<button onClick={isAiMode ? stopAiMode : startAiMode} className="game2048-btn game2048-btn-ai" disabled={gameOver}>
 						{isAiMode ? '停止 AI 模式' : '让 AI 玩'}
 					</button>
 					{isAiMode && (
