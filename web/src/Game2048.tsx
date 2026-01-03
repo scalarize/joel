@@ -266,6 +266,95 @@ function checkTarget(grid: Cell[][], achievedTargets: Set<number>): number | nul
 }
 
 /**
+ * 游戏状态接口（用于保存和恢复）
+ */
+interface GameState {
+	grid: number[][]; // 只保存数字值，不保存 id 等临时属性
+	gridSize: GridSize;
+	gameStarted: boolean;
+	score: number;
+	achievedTargets: number[]; // Set 转为数组
+	moveCount: number;
+}
+
+const STORAGE_KEY = 'game2048_state';
+const SAVE_INTERVAL = 5; // 每 5 步保存一次
+
+/**
+ * 保存游戏状态到 localStorage
+ */
+function saveGameState(
+	grid: Cell[][],
+	gridSize: GridSize,
+	gameStarted: boolean,
+	score: number,
+	achievedTargets: Set<number>,
+	moveCount: number
+): void {
+	try {
+		// 只保存数字值，不保存临时属性
+		const gridValues: number[][] = grid.map((row) => row.map((cell) => cell.value));
+
+		const state: GameState = {
+			grid: gridValues,
+			gridSize,
+			gameStarted,
+			score,
+			achievedTargets: Array.from(achievedTargets),
+			moveCount,
+		};
+
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+		console.log(`[2048] 游戏状态已保存 (步数: ${moveCount})`);
+	} catch (error) {
+		console.error('[2048] 保存游戏状态失败:', error);
+	}
+}
+
+/**
+ * 从 localStorage 恢复游戏状态
+ */
+function loadGameState(): GameState | null {
+	try {
+		const saved = localStorage.getItem(STORAGE_KEY);
+		if (!saved) {
+			return null;
+		}
+
+		const state: GameState = JSON.parse(saved);
+		console.log('[2048] 检测到保存的游戏状态，准备恢复');
+		return state;
+	} catch (error) {
+		console.error('[2048] 恢复游戏状态失败:', error);
+		return null;
+	}
+}
+
+/**
+ * 清除保存的游戏状态
+ */
+function clearGameState(): void {
+	try {
+		localStorage.removeItem(STORAGE_KEY);
+		console.log('[2048] 已清除保存的游戏状态');
+	} catch (error) {
+		console.error('[2048] 清除游戏状态失败:', error);
+	}
+}
+
+/**
+ * 将保存的网格值转换为 Cell 数组
+ */
+function restoreGridFromState(gridValues: number[][]): Cell[][] {
+	return gridValues.map((row) =>
+		row.map((value) => ({
+			value,
+			id: generateId(),
+		}))
+	);
+}
+
+/**
  * 计算空位数量
  */
 function countEmptyTiles(grid: Cell[][]): number {
@@ -536,21 +625,42 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 export default function Game2048() {
-	const [grid, setGrid] = useState<Cell[][]>(() => initializeGame(4));
-	const [gridSize, setGridSize] = useState<GridSize>(4);
-	const [gameStarted, setGameStarted] = useState(false);
+	// 尝试恢复保存的游戏状态
+	const savedState = loadGameState();
+	const initialGrid = savedState ? restoreGridFromState(savedState.grid) : initializeGame(4);
+	const initialGridSize = savedState?.gridSize ?? 4;
+	const initialGameStarted = savedState?.gameStarted ?? false;
+	const initialScore = savedState?.score ?? 0;
+	const initialAchievedTargets = savedState ? new Set(savedState.achievedTargets) : new Set<number>();
+	const initialMoveCount = savedState?.moveCount ?? 0;
+
+	const [grid, setGrid] = useState<Cell[][]>(initialGrid);
+	const [gridSize, setGridSize] = useState<GridSize>(initialGridSize);
+	const [gameStarted, setGameStarted] = useState(initialGameStarted);
 	const [gameOver, setGameOver] = useState(false);
 	const [showGameOverModal, setShowGameOverModal] = useState(false);
-	const [score, setScore] = useState(0);
-	const [achievedTargets, setAchievedTargets] = useState<Set<number>>(new Set());
+	const [score, setScore] = useState(initialScore);
+	const [achievedTargets, setAchievedTargets] = useState<Set<number>>(initialAchievedTargets);
 	const [currentTarget, setCurrentTarget] = useState<number | null>(null);
 	const [isAnimating, setIsAnimating] = useState(false);
 	const [isAiMode, setIsAiMode] = useState(false);
 	const [aiActiveDirection, setAiActiveDirection] = useState<Direction | null>(null);
 	const [aiInterval, setAiInterval] = useState<number>(1); // AI 执行间隔（秒）
+	const [moveCount, setMoveCount] = useState(initialMoveCount); // 步数计数器
 	const gameAreaRef = useRef<HTMLDivElement>(null);
 	const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 	const aiIntervalRef = useRef<number | null>(null);
+
+	// 如果恢复了保存的状态，显示提示
+	useEffect(() => {
+		if (savedState) {
+			console.log('[2048] 游戏状态已恢复:', {
+				gridSize: savedState.gridSize,
+				score: savedState.score,
+				moveCount: savedState.moveCount,
+			});
+		}
+	}, []);
 
 	// 合法的间隔时间（秒）
 	const VALID_INTERVALS = [0.1, 0.2, 0.5, 1, 2, 3];
@@ -572,6 +682,8 @@ export default function Game2048() {
 		const nextSize = sizes[nextIndex];
 
 		console.log(`[2048] 切换布局: ${gridSize}x${gridSize} -> ${nextSize}x${nextSize}`);
+		// 切换布局时清除保存的状态
+		clearGameState();
 		setGridSize(nextSize);
 		setGrid(initializeGame(nextSize));
 		setGameOver(false);
@@ -579,6 +691,7 @@ export default function Game2048() {
 		setScore(0);
 		setAchievedTargets(new Set());
 		setCurrentTarget(null);
+		setMoveCount(0);
 	}, [gridSize, gameStarted]);
 
 	/**
@@ -637,6 +750,8 @@ export default function Game2048() {
 		if (isAiMode) {
 			stopAiMode();
 		}
+		// 清除保存的游戏状态
+		clearGameState();
 		setGrid(initializeGame(gridSize));
 		setGameStarted(false);
 		setGameOver(false);
@@ -644,6 +759,7 @@ export default function Game2048() {
 		setScore(0);
 		setAchievedTargets(new Set());
 		setCurrentTarget(null);
+		setMoveCount(0);
 	}, [gridSize, isAiMode, stopAiMode]);
 
 	/**
@@ -670,6 +786,13 @@ export default function Game2048() {
 					console.log('[2048] 无法移动');
 					return prevGrid;
 				}
+
+				// 增加步数
+				setMoveCount((prevCount) => {
+					const newCount = prevCount + 1;
+					console.log(`[2048] 步数: ${newCount}`);
+					return newCount;
+				});
 
 				// 累加分数
 				setScore((prevScore) => {
@@ -720,14 +843,27 @@ export default function Game2048() {
 				return withNewTile;
 			});
 
-			// 设置动画状态
-			setIsAnimating(true);
-			setTimeout(() => {
-				setIsAnimating(false);
-			}, 200);
-		},
-		[isAnimating, gameOver, gameStarted, achievedTargets, isAiMode]
-	);
+		// 设置动画状态
+		setIsAnimating(true);
+		setTimeout(() => {
+			setIsAnimating(false);
+		}, 200);
+	},
+	[isAnimating, gameOver, gameStarted, achievedTargets, isAiMode]
+);
+
+	// 自动保存游戏状态（每 N 步保存一次）
+	useEffect(() => {
+		// 只有在游戏已开始且步数大于0时才保存
+		if (!gameStarted || moveCount === 0) {
+			return;
+		}
+
+		// 每 N 步保存一次
+		if (moveCount % SAVE_INTERVAL === 0) {
+			saveGameState(grid, gridSize, gameStarted, score, achievedTargets, moveCount);
+		}
+	}, [grid, gridSize, gameStarted, score, achievedTargets, moveCount]);
 
 	/**
 	 * 处理键盘事件
