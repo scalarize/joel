@@ -113,6 +113,8 @@ export default function Puzzler() {
 	const hasInitializedRef = useRef(false);
 	const imagePreloadRef = useRef<HTMLImageElement | null>(null);
 	const [imageLoaded, setImageLoaded] = useState(false);
+	const [showImageSelector, setShowImageSelector] = useState(false);
+	const [selectedImages, setSelectedImages] = useState<number[]>([]);
 
 	/**
 	 * 获取图片 URL
@@ -223,6 +225,102 @@ export default function Puzzler() {
 		}
 		return availableIds;
 	}, [manifest]);
+
+	/**
+	 * 获取最新的10张图片（id倒序）
+	 */
+	const getLatestImages = useCallback((): number[] => {
+		const availableIds = getAvailableImageIds();
+		// 按id倒序排列，取前10张
+		const sorted = [...availableIds].sort((a, b) => b - a);
+		return sorted.slice(0, 10);
+	}, [getAvailableImageIds]);
+
+	/**
+	 * 获取随机10张图片
+	 */
+	const getRandomImages = useCallback((): number[] => {
+		const availableIds = getAvailableImageIds();
+		if (availableIds.length === 0) {
+			return [];
+		}
+		// 随机打乱并取前10张
+		const shuffled = [...availableIds].sort(() => Math.random() - 0.5);
+		return shuffled.slice(0, Math.min(10, shuffled.length));
+	}, [getAvailableImageIds]);
+
+	/**
+	 * 打开选图浮层
+	 */
+	const openImageSelector = useCallback(() => {
+		console.log('[Puzzler] 打开选图浮层');
+		const latestImages = getLatestImages();
+		setSelectedImages(latestImages);
+		setShowImageSelector(true);
+	}, [getLatestImages]);
+
+	/**
+	 * 关闭选图浮层
+	 */
+	const closeImageSelector = useCallback(() => {
+		console.log('[Puzzler] 关闭选图浮层');
+		setShowImageSelector(false);
+	}, []);
+
+	/**
+	 * 换一批图片
+	 */
+	const refreshImageSelection = useCallback(() => {
+		console.log('[Puzzler] 换一批图片');
+		const randomImages = getRandomImages();
+		setSelectedImages(randomImages);
+	}, [getRandomImages]);
+
+	/**
+	 * 选择图片并开始游戏
+	 */
+	const selectImageAndStart = useCallback(
+		(imageId: number) => {
+			console.log('[Puzzler] 选择图片:', imageId);
+			setCurrentImage(imageId);
+			preloadImage(imageId);
+			closeImageSelector();
+
+			// 初始化游戏
+			const config = DIFFICULTY_CONFIGS[difficulty];
+			const totalPieces = config.rows * config.cols;
+
+			// 创建图块
+			const newPieces: Piece[] = [];
+			for (let i = 0; i < totalPieces; i++) {
+				const row = Math.floor(i / config.cols);
+				const col = i % config.cols;
+				newPieces.push({
+					id: i,
+					position: { row, col },
+					originalPosition: { row, col },
+				});
+			}
+
+			// 随机打乱位置
+			const shuffled = [...newPieces];
+			for (let i = shuffled.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[shuffled[i].position, shuffled[j].position] = [shuffled[j].position, shuffled[i].position];
+			}
+
+			setPieces(shuffled);
+			setGameStarted(false);
+			setGameWon(false);
+			setDraggingPiece(null);
+			// 清理触摸相关状态
+			setTouchDraggingPiece(null);
+			setTouchStartCell(null);
+			setTouchStartPosition(null);
+			setTouchCurrentCell(null);
+		},
+		[difficulty, preloadImage, closeImageSelector]
+	);
 
 	/**
 	 * 初始化新游戏
@@ -1328,6 +1426,9 @@ export default function Puzzler() {
 					)}
 				</div>
 				<div className="puzzler-controls">
+					<button onClick={openImageSelector} className="puzzler-btn puzzler-btn-secondary">
+						选图
+					</button>
 					<button onClick={initNewGame} className="puzzler-btn puzzler-btn-primary">
 						新游戏
 					</button>
@@ -1357,6 +1458,38 @@ export default function Puzzler() {
 						<button onClick={initNewGame} className="puzzler-btn puzzler-btn-primary">
 							再来一局
 						</button>
+					</div>
+				</div>
+			)}
+
+			{showImageSelector && (
+				<div className="puzzler-image-selector" onClick={closeImageSelector}>
+					<div className="puzzler-image-selector-content" onClick={(e) => e.stopPropagation()}>
+						<div className="puzzler-image-selector-header">
+							<h3>选择图片</h3>
+							<button onClick={closeImageSelector} className="puzzler-image-selector-close">
+								×
+							</button>
+						</div>
+						<div className="puzzler-image-selector-actions">
+							<button onClick={refreshImageSelection} className="puzzler-btn puzzler-btn-secondary">
+								换一批
+							</button>
+						</div>
+						<div className="puzzler-image-selector-grid">
+							{selectedImages.map((imageId) => (
+								<div
+									key={imageId}
+									className={`puzzler-image-selector-item ${currentImage === imageId ? 'puzzler-image-selector-item-current' : ''}`}
+									onClick={() => selectImageAndStart(imageId)}
+								>
+									<img src={getImageUrl(imageId)} alt={`图片 ${imageId}`} loading="lazy" />
+									<div className="puzzler-image-selector-item-overlay">
+										<div className="puzzler-image-selector-item-id">#{imageId}</div>
+									</div>
+								</div>
+							))}
+						</div>
 					</div>
 				</div>
 			)}
