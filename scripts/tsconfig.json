@@ -5,6 +5,7 @@
 		"moduleResolution": "node",
 		"lib": ["ES2022"],
 		"types": ["node"],
+		"typeRoots": ["../node_modules/@types", "../web/node_modules/@types"],
 		"skipLibCheck": true,
 		"strict": true,
 		"esModuleInterop": true,
@@ -14,7 +15,8 @@
 		"baseUrl": "..",
 		"paths": {
 			"../web/src/*": ["web/src/*"]
-		}
+		},
+		"moduleDetection": "force"
 	},
 	"include": ["*.ts"],
 	"exclude": ["node_modules"]

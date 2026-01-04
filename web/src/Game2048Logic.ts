@@ -2,7 +2,7 @@
  * 2048 游戏核心逻辑
  * 包含所有游戏逻辑函数，不依赖 React 或 UI
  * 可以被 Game2048.tsx 和 simulate-2048-ai.ts 共享使用
- * 
+ *
  * 导出策略：
  * - 只导出被外部直接使用的函数和类型
  * - 内部辅助函数（如 evaluateGrid, shuffleArray 等）不导出，由模块系统自动处理依赖
@@ -424,24 +424,33 @@ function getImmediateMergeBonus(oldGrid: Cell[][], newGrid: Cell[][]): number {
  * 2. 最大数字聚角惩罚（大数远离左上角会被惩罚）
  * 3. 平滑度惩罚（相邻数字差异大会被惩罚）
  */
-function evaluateGrid(grid: Cell[][]): number {
-	const CLUSTERED_WEIGHT = 100;
-	const SMOOTHNESS_WEIGHT = -5;
-	const EMPTY_WEIGHT = 20;
+function evaluateGrid(grid: Cell[][], newGrid: Cell[][]): number {
+	let MERGE_WEIGHT = 10; // default 10
+	let CLUSTERED_WEIGHT = 100; // default 100
+	let SMOOTHNESS_WEIGHT = 0; // default -5
+	let EMPTY_WEIGHT = 100; // default 20
 
-	// 1. 【战略层】大数聚集度（高权重）：替代"聚角惩罚"，驱动长期布局
-	const closenessBonus = getDirectedClusterBonus(grid) * CLUSTERED_WEIGHT; // 高，如 100
+	const emptyCount = countEmptyTiles(newGrid);
+	// 根据剩余空间调整参数? 是的，但是不是很好用
+	if (emptyCount < 0) {
+	}
 
-	// 2. 【战术层】棋盘有序性（中权重）：保证合并流畅
-	const smoothnessPenalty = getSmoothnessPenalty(grid) * SMOOTHNESS_WEIGHT; // 中，如 -5
+	// 1. 计算即时合并奖励
+	const mergeBonus = getImmediateMergeBonus(grid, newGrid) * MERGE_WEIGHT;
 
-	// 3. 【资源层】操作空间（低权重）：必要但不可过度
-	const emptyCount = countEmptyTiles(grid) * EMPTY_WEIGHT; // 低，从 100 降至 20-30
+	// 2. 【战略层】大数聚集度（高权重）：替代"聚角惩罚"，驱动长期布局
+	const closenessBonus = getDirectedClusterBonus(newGrid) * CLUSTERED_WEIGHT; // 高，如 100
+
+	// 3. 【战术层】棋盘有序性（中权重）：保证合并流畅
+	const smoothnessPenalty = getSmoothnessPenalty(newGrid) * SMOOTHNESS_WEIGHT; // 中，如 -5
+
+	// 4. 【资源层】操作空间（低权重）：必要但不可过度
+	const emptyBonus = emptyCount * EMPTY_WEIGHT; // 低，从 100 降至 20-30
 
 	// 4. 【攻击层】即时机会（中高权重）：鼓励积极合并
 	// （注：此部分在 aiDecideMove 中与方向相关，不在此函数内）
 
-	const score = closenessBonus + emptyCount - smoothnessPenalty;
+	const score = mergeBonus + closenessBonus + emptyBonus - smoothnessPenalty;
 	return score;
 }
 
@@ -449,8 +458,6 @@ function evaluateGrid(grid: Cell[][]): number {
  * AI 决策函数：测试四个方向，返回分数最高的方向
  */
 export function aiDecideMove(grid: Cell[][]): Direction | null {
-	const MERGE_WEIGHT = 10;
-
 	// === 第一优先级：安全合并最大数的机会 ===
 	const maxTile = grid.flat().reduce((max, cell) => Math.max(max, cell.value), 0);
 	const safeMaxMergeMoves: Direction[] = [];
@@ -482,13 +489,10 @@ export function aiDecideMove(grid: Cell[][]): Direction | null {
 		}
 
 		// === 正常评估：只基于我们100%可控的 newGrid ===
-		// 计算即时合并奖励
-		const mergeBonus = getImmediateMergeBonus(grid, newGrid);
-		const evalScore = evaluateGrid(newGrid);
-		const finalScore = evalScore + mergeBonus * MERGE_WEIGHT;
+		const evalScore = evaluateGrid(grid, newGrid);
 
-		if (finalScore > bestScore) {
-			bestScore = finalScore;
+		if (evalScore > bestScore) {
+			bestScore = evalScore;
 			bestDirection = direction;
 		}
 	}
@@ -508,4 +512,3 @@ function shuffleArray<T>(array: T[]): T[] {
 	}
 	return shuffled;
 }
-

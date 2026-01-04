@@ -1,13 +1,15 @@
+/// <reference types="node" />
+
 /**
  * 2048 AI 模拟脚本
  * 快速模拟多次 AI 游戏，统计得分和最高数字
- * 
+ *
  * 使用方法：
  *   npx tsx scripts/simulate-2048-ai.ts [运行次数] [网格大小]
- * 
+ *
  * 例如：
  *   npx tsx scripts/simulate-2048-ai.ts 100 4
- * 
+ *
  * 注意：此脚本依赖于 web/src/Game2048Logic.ts 中导出的游戏逻辑函数，
  * 避免了代码重复，确保游戏逻辑的一致性。Game2048Logic.ts 是纯逻辑文件，
  * 不包含 React 或 CSS 依赖，可以在 Node.js 环境中直接使用。
@@ -15,13 +17,7 @@
 
 // 从 Game2048Logic.ts 导入所有需要的类型和函数
 import type { Direction, GridSize, Cell } from '../web/src/Game2048Logic';
-import {
-	initializeGame,
-	addRandomTile,
-	moveGrid,
-	canMove,
-	aiDecideMove,
-} from '../web/src/Game2048Logic';
+import { initializeGame, addRandomTile, moveGrid, canMove, aiDecideMove } from '../web/src/Game2048Logic';
 
 interface SimulationResult {
 	score: number;
@@ -63,7 +59,9 @@ function simulateSingleGame(gridSize: GridSize = 4, gameIndex: number, totalGame
 	}
 
 	const maxTile = getMaxTile(grid);
-	process.stdout.write(`\r[${gameIndex}/${totalGames}] 完成 - 步数: ${moveCount}, 得分: ${score.toLocaleString()}, 最高块: ${maxTile}\n`);
+	if (gameIndex % 10 === 0) {
+		process.stdout.write(`\r[${gameIndex}/${totalGames}] 完成 - 步数: ${moveCount}, 得分: ${score.toLocaleString()}, 最高块: ${maxTile}\n`);
+	}
 
 	return {
 		score,
