@@ -39,6 +39,7 @@ function simulateSingleGame(gridSize: GridSize = 4, gameIndex: number, totalGame
 	let grid = initializeGame(gridSize);
 	let score = 0;
 	let moveCount = 0;
+	const step = Math.max(1, Math.floor(totalGames / 10));
 
 	process.stdout.write(`\r[${gameIndex}/${totalGames}] 进行中...`);
 
@@ -59,7 +60,7 @@ function simulateSingleGame(gridSize: GridSize = 4, gameIndex: number, totalGame
 	}
 
 	const maxTile = getMaxTile(grid);
-	if (gameIndex % 10 === 0) {
+	if (gameIndex % step === 0) {
 		process.stdout.write(`\r[${gameIndex}/${totalGames}] 完成 - 步数: ${moveCount}, 得分: ${score.toLocaleString()}, 最高块: ${maxTile}\n`);
 	}
 

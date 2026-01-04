@@ -42,15 +42,7 @@ function createEmptyGrid(size: GridSize): Cell[][] {
  * 在随机空位置添加新数字（2或4，90%概率是2）
  */
 export function addRandomTile(grid: Cell[][]): Cell[][] {
-	const emptyCells: { row: number; col: number }[] = [];
-	for (let row = 0; row < grid.length; row++) {
-		for (let col = 0; col < grid[row].length; col++) {
-			if (grid[row][col].value === 0) {
-				emptyCells.push({ row, col });
-			}
-		}
-	}
-
+	const emptyCells: { cell: Cell; row: number; col: number }[] = getEmptyTiles(grid);
 	if (emptyCells.length === 0) {
 		return grid;
 	}
@@ -204,15 +196,8 @@ export function moveGrid(grid: Cell[][], direction: Direction): { grid: Cell[][]
  * 检查是否还有可移动的空间
  */
 export function canMove(grid: Cell[][]): boolean {
-	const size = grid.length;
-
-	// 检查是否有空格
-	for (let row = 0; row < size; row++) {
-		for (let col = 0; col < size; col++) {
-			if (grid[row][col].value === 0) {
-				return true;
-			}
-		}
+	if (getEmptyTiles(grid).length > 0) {
+		return true;
 	}
 
 	return hasAnyMovePossible(grid);
@@ -242,16 +227,16 @@ function hasAnyMovePossible(grid: Cell[][]): boolean {
 /**
  * 计算空位数量（内部使用）
  */
-function countEmptyTiles(grid: Cell[][]): number {
-	let emptyCount = 0;
+function getEmptyTiles(grid: Cell[][]): { cell: Cell; row: number; col: number }[] {
+	let emptyCells: { cell: Cell; row: number; col: number }[] = [];
 	for (let row = 0; row < grid.length; row++) {
 		for (let col = 0; col < grid[row].length; col++) {
 			if (grid[row][col].value === 0) {
-				emptyCount++;
+				emptyCells.push({ cell: grid[row][col], row, col });
 			}
 		}
 	}
-	return emptyCount;
+	return emptyCells;
 }
 
 /**
@@ -430,10 +415,8 @@ function evaluateGrid(grid: Cell[][], newGrid: Cell[][]): number {
 	let SMOOTHNESS_WEIGHT = 0; // default -5
 	let EMPTY_WEIGHT = 100; // default 20
 
-	const emptyCount = countEmptyTiles(newGrid);
-	// 根据剩余空间调整参数? 是的，但是不是很好用
-	if (emptyCount < 0) {
-	}
+	const emptyCount = getEmptyTiles(newGrid).length;
+	// 可以考虑根据剩余空间调整参数? 是的，但是不是很好用
 
 	// 1. 计算即时合并奖励
 	const mergeBonus = getImmediateMergeBonus(grid, newGrid) * MERGE_WEIGHT;
@@ -454,13 +437,65 @@ function evaluateGrid(grid: Cell[][], newGrid: Cell[][]): number {
 	return score;
 }
 
+function getTopNTiles(grid: Cell[][], n: number): { value: number; cnt: number }[] {
+	let ret: { value: number; cnt: number }[] = [];
+	for (const cell of grid.flat()) {
+		if (cell.value === 0) continue;
+		// 对 ret 作插入排序
+		let inserted = false;
+		for (let i = 0; i < ret.length; i++) {
+			if (ret[i].value < cell.value) {
+				ret.splice(i, 0, { value: cell.value, cnt: 1 });
+				inserted = true;
+				break;
+			}
+		}
+		if (!inserted) {
+			ret.push({ value: cell.value, cnt: 1 });
+		}
+	}
+	return ret.slice(0, n);
+}
+
+/**
+ * 优先移动方向：尝试找到一个方向，使得最大数字数量增加最多，且合并后的局面仍然有移动的可能性
+ * @param grid 游戏网格
+ * @param topN 考虑的最大数字数量
+ * @returns 优先移动的方向，如果没有则返回 null
+ */
+function prioritizedMove(grid: Cell[][], topN: number): Direction | null {
+	const topNTiles = getTopNTiles(grid, topN);
+	const topNValue = topNTiles.reduce((sum, tile) => sum + tile.value * tile.cnt, 0);
+	let safeTopNMergeMoveValue = 0;
+	let safeTopNMergeMoveDirection: Direction | null = null;
+
+	const directions: Direction[] = shuffleArray(['up', 'down', 'left', 'right']);
+
+	for (const direction of directions) {
+		const { grid: newGrid, moved } = moveGrid(grid, direction);
+		if (!moved || !hasAnyMovePossible(newGrid)) continue;
+
+		const newTopNTiles = getTopNTiles(newGrid, topN);
+		const newTopNValue = newTopNTiles.reduce((sum, tile) => sum + tile.value * tile.cnt, 0);
+		const valueDelta = newTopNValue - topNValue;
+		if (valueDelta > safeTopNMergeMoveValue) {
+			safeTopNMergeMoveValue = valueDelta;
+			safeTopNMergeMoveDirection = direction;
+		}
+	}
+
+	return safeTopNMergeMoveDirection;
+}
+
 /**
  * AI 决策函数：测试四个方向，返回分数最高的方向
  */
 export function aiDecideMove(grid: Cell[][]): Direction | null {
 	// === 第一优先级：安全合并最大数的机会 ===
-	const maxTile = grid.flat().reduce((max, cell) => Math.max(max, cell.value), 0);
-	const safeMaxMergeMoves: Direction[] = [];
+	const prioritizedMoveDirection = prioritizedMove(grid, 1);
+	if (prioritizedMoveDirection !== null) {
+		return prioritizedMoveDirection;
+	}
 
 	const directions: Direction[] = shuffleArray(['up', 'down', 'left', 'right']);
 	let bestDirection: Direction | null = null;
@@ -472,11 +507,6 @@ export function aiDecideMove(grid: Cell[][]): Direction | null {
 	for (const direction of directions) {
 		const { grid: newGrid, moved } = moveGrid(grid, direction);
 		if (!moved) continue;
-
-		const newMaxTile = newGrid.flat().reduce((max, cell) => Math.max(max, cell.value), 0);
-		if (newMaxTile > maxTile && hasAnyMovePossible(newGrid)) {
-			safeMaxMergeMoves.push(direction);
-		}
 
 		// === 唯一的、绝对的风险检查 ===
 		if (!hasAnyMovePossible(newGrid)) {
@@ -495,10 +525,6 @@ export function aiDecideMove(grid: Cell[][]): Direction | null {
 			bestScore = evalScore;
 			bestDirection = direction;
 		}
-	}
-
-	if (safeMaxMergeMoves.length > 0) {
-		return safeMaxMergeMoves[Math.floor(Math.random() * safeMaxMergeMoves.length)];
 	}
 
 	return bestDirection;
