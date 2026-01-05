@@ -263,7 +263,22 @@ export default function NESEmulator() {
 				}
 
 				// 加载 ROM（需要字符串格式）
-				nesRef.current.loadROM(romString);
+				try {
+					nesRef.current.loadROM(romString);
+				} catch (loadError) {
+					// jsnes 可能不支持某些 ROM mapper
+					const errorMsg = loadError instanceof Error ? loadError.message : '未知错误';
+					console.error('[NES] 加载 ROM 失败:', loadError);
+
+					// 检查是否是 mapper 不支持的错误
+					if (errorMsg.includes('mapper') || errorMsg.includes('unsupported') || errorMsg.includes('not supported')) {
+						throw new Error(
+							`此 ROM 使用了 jsnes 不支持的 mapper。jsnes 仅支持部分 NES mapper，建议使用 RetroArch 或其他更完整的模拟器。\n` +
+								`错误详情: ${errorMsg}`
+						);
+					}
+					throw loadError;
+				}
 
 				setState({
 					romLoaded: true,
@@ -392,6 +407,13 @@ export default function NESEmulator() {
 					<div className="nes-upload-prompt">
 						<p>请上传 .nes 格式的 ROM 文件开始游戏</p>
 						<p className="nes-hint">提示：请确保您拥有合法的 ROM 文件</p>
+						<div className="nes-compatibility-warning">
+							<p>
+								<strong>兼容性说明：</strong>
+							</p>
+							<p>当前使用的是 jsnes 模拟器，仅支持部分 NES ROM mapper。</p>
+							<p>如果遇到 ROM 无法加载的情况，可能是使用了不支持的 mapper。</p>
+						</div>
 					</div>
 				) : (
 					<div className="nes-game-info">

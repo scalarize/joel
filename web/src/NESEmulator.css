@@ -85,6 +85,33 @@
 	font-style: italic;
 }
 
+.nes-compatibility-warning {
+	margin-top: 1.5rem;
+	padding: 1rem;
+	background: #fff3cd;
+	border: 1px solid #ffc107;
+	border-radius: 4px;
+	color: #856404;
+	font-size: 0.85rem;
+	line-height: 1.6;
+}
+
+.nes-compatibility-warning p {
+	margin: 0.5rem 0;
+}
+
+.nes-compatibility-warning p:first-child {
+	margin-top: 0;
+}
+
+.nes-compatibility-warning p:last-child {
+	margin-bottom: 0;
+}
+
+.nes-compatibility-warning strong {
+	color: #856404;
+}
+
 .nes-game-info {
 	text-align: center;
 	margin-bottom: 1rem;
