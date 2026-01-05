@@ -309,6 +309,9 @@ function App() {
 				case '/admin/users':
 					title = '用户管理 - Joel center';
 					break;
+				case '/login':
+					title = '登录 - Joel center';
+					break;
 				default:
 					title = 'Joel center';
 					break;
@@ -350,7 +353,7 @@ function App() {
 	if (user && user.mustChangePassword && path !== '/change-password') {
 		return (
 			<div className="app">
-				<Header user={user} onLogout={handleLogout} />
+				<Header user={user} onLogout={handleLogout} path={path} />
 				<main className="main-content">
 					<ChangePasswordPrompt
 						user={user}
@@ -366,7 +369,7 @@ function App() {
 
 	return (
 		<div className="app">
-			<Header user={user} onLogout={handleLogout} />
+			<Header user={user} onLogout={handleLogout} path={path} />
 			<main className="main-content">
 				{path === '/profile' ? (
 					user ? (
@@ -399,6 +402,8 @@ function App() {
 					) : (
 						<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 					)
+				) : path === '/login' ? (
+					<LoginPrompt onLogin={handleLogin} isCnHost={isCnHost} />
 				) : (
 					<Dashboard user={user} isCnHost={isCnHost} modulePermissions={modulePermissions} />
 				)}
@@ -407,7 +412,18 @@ function App() {
 	);
 }
 
-function Header({ user, onLogout }: { user: User | null; onLogout: () => void }) {
+function Header({ user, onLogout, path }: { user: User | null; onLogout: () => void; path: string }) {
+	// 检查 URL 中是否有 redirect 参数
+	const getLoginUrl = () => {
+		const url = new URL(window.location.href);
+		const redirectParam = url.searchParams.get('redirect');
+		const loginUrl = new URL('/login', window.location.origin);
+		if (redirectParam) {
+			loginUrl.searchParams.set('redirect', redirectParam);
+		}
+		return loginUrl.toString();
+	};
+
 	return (
 		<header className="header">
 			<div className="header-content">
@@ -433,6 +449,10 @@ function Header({ user, onLogout }: { user: User | null; onLogout: () => void })
 								退出
 							</button>
 						</div>
+					) : path === '/' ? (
+						<a href={getLoginUrl()} className="login-link">
+							登录
+						</a>
 					) : (
 						''
 					)}
@@ -1052,8 +1072,8 @@ function SSOHandler({ user }: { user: User | null }) {
 			// 检查用户是否已登录
 			if (!user) {
 				console.log('[SSO] 用户未登录，重定向到登录页面');
-				// 未登录，重定向到登录页面（前端页面），并传递 redirect 参数
-				const loginUrl = new URL('/', window.location.origin);
+				// 未登录，重定向到登录页面（显式的 /login 路由），并传递 redirect 参数
+				const loginUrl = new URL('/login', window.location.origin);
 				loginUrl.searchParams.set('redirect', redirectParam);
 				window.location.href = loginUrl.toString();
 				return;
@@ -1064,7 +1084,7 @@ function SSOHandler({ user }: { user: User | null }) {
 			if (!jwtToken) {
 				console.warn('[SSO] 用户已登录但 localStorage 中没有 JWT token，重定向到登录页面');
 				// 没有 token，重定向到登录页面
-				const loginUrl = new URL('/', window.location.origin);
+				const loginUrl = new URL('/login', window.location.origin);
 				loginUrl.searchParams.set('redirect', redirectParam);
 				window.location.href = loginUrl.toString();
 				return;
