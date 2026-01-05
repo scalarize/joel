@@ -6,6 +6,7 @@ import MiniGames from './MiniGames';
 import Puzzler from './Puzzler';
 import PuzzlerGallery from './PuzzlerGallery';
 import Game2048 from './Game2048';
+import NESEmulator from './NESEmulator';
 import { MODULES } from './modules';
 
 /**
@@ -299,6 +300,9 @@ function App() {
 				case '/mini-games/puzzler':
 					title = '拼图游戏 - Joel center';
 					break;
+				case '/mini-games/nes':
+					title = 'NES 模拟器 - Joel center';
+					break;
 				case '/profile':
 					title = '个人资料 - Joel center';
 					break;
@@ -385,6 +389,8 @@ function App() {
 					<PuzzlerGallery />
 				) : path === '/mini-games/2048' ? (
 					<Game2048 />
+				) : path === '/mini-games/nes' ? (
+					<NESEmulator />
 				) : path === '/admin' || path === '/admin/dashboard' || path === '/admin/users' ? (
 					user ? (
 						<Admin />
