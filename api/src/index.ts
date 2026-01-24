@@ -90,8 +90,23 @@ export default {
 
 		try {
 			// 公钥 API（JWKS 格式）
-			if (path === '/.well-known/jwks.json' && request.method === 'GET') {
-				return handleJWKS(request, env);
+			// 注意：使用精确匹配，确保 Worker 能够拦截此请求，避免被 Pages 路由处理
+			if (path === '/.well-known/jwks.json' || path === '/.well-known/jwks.json/') {
+				console.log(`[路由] 匹配到 JWKS 端点: ${path}, 方法: ${request.method}`);
+				if (request.method === 'OPTIONS') {
+					return handleApiOptions(request, env);
+				}
+				if (request.method === 'GET') {
+					return handleJWKS(request, env);
+				}
+				// 不支持的方法返回 405
+				return new Response('Method Not Allowed', {
+					status: 405,
+					headers: {
+						'Allow': 'GET, OPTIONS',
+						'Content-Type': 'text/plain',
+					},
+				});
 			}
 
 			// 用户头像 API（无需身份校验，但需要 CORS 控制）
@@ -1632,6 +1647,7 @@ async function handleUserAvatar(request: Request, env: Env): Promise<Response> {
 /**
  * API: 获取公钥（JWKS 格式）
  * 端点: GET /.well-known/jwks.json
+ * 注意：此端点需要支持 CORS，以便子站可以跨域访问
  */
 function handleJWKS(request: Request, env: Env): Response {
 	console.log('[API] /.well-known/jwks.json 请求');
@@ -1650,12 +1666,16 @@ function handleJWKS(request: Request, env: Env): Response {
 		],
 	};
 
-	return new Response(JSON.stringify(jwks), {
-		headers: {
-			'Content-Type': 'application/json',
+	// 使用 jsonWithCors 以支持跨域访问，并添加缓存控制
+	return jsonWithCors(
+		request,
+		env,
+		jwks,
+		200,
+		{
 			'Cache-Control': 'public, max-age=3600', // 缓存 1 小时
-		},
-	});
+		}
+	);
 }
 
 /**
