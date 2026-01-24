@@ -10,7 +10,7 @@ export interface JWTPayload {
 	// 标准字段（JWT 规范）
 	iss: string; // Issuer: "joel.scalarize.org"
 	sub: string; // Subject: userId
-	aud: string[]; // Audience: ["gd.scalarize.org", "discover.scalarize.org"]
+	aud: string[]; // Audience: ["gd.scalarize.org", "discover.scalarize.org", "pih.scalarize.org"]
 	exp: number; // Expiration time (Unix timestamp)
 	iat: number; // Issued at (Unix timestamp)
 
@@ -25,6 +25,7 @@ export interface JWTPayload {
 		favor: boolean; // 需要授权或管理员
 		gd: boolean; // 需要授权或管理员
 		discover: boolean; // 需要授权或管理员
+		pih: boolean; // 需要授权或管理员
 		admin: boolean; // 仅管理员
 	};
 
@@ -144,11 +145,13 @@ export async function buildJWTPayload(
 		permObj.favor = true;
 		permObj.gd = true;
 		permObj.discover = true;
+		permObj.pih = true;
 	} else {
 		// 检查显式授权
 		permObj.favor = permissions.some((p) => p.module_id === 'favor');
 		permObj.gd = permissions.some((p) => p.module_id === 'gd');
 		permObj.discover = permissions.some((p) => p.module_id === 'discover');
+		permObj.pih = permissions.some((p) => p.module_id === 'pih');
 	}
 
 	const permVersion = getPermVersion(env);
@@ -157,7 +160,7 @@ export async function buildJWTPayload(
 	return {
 		iss: 'joel.scalarize.org',
 		sub: userId,
-		aud: ['gd.scalarize.org', 'discover.scalarize.org'],
+		aud: ['gd.scalarize.org', 'discover.scalarize.org', 'pih.scalarize.org'],
 		exp: now + JWT_EXPIRES_IN,
 		iat: now,
 		userId,

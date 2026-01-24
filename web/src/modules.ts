@@ -49,6 +49,14 @@ export const MODULES: ModuleConfig[] = [
 		external: false,
 	},
 	{
+		id: 'pih',
+		title: '投资助手',
+		description: '投资助手相关工具和资源',
+		url: 'http://pih.scalarize.org/',
+		icon: '📈',
+		external: false,
+	},
+	{
 		id: 'mini-games',
 		title: '小游戏',
 		description: '小游戏入口集合',

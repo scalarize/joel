@@ -6,7 +6,7 @@
 /**
  * 所有模块 ID 列表
  */
-export const MODULE_IDS = ['profile', 'favor', 'gd', 'discover', 'mini-games', 'admin'] as const;
+export const MODULE_IDS = ['profile', 'favor', 'gd', 'discover', 'pih', 'mini-games', 'admin'] as const;
 
 /**
  * 需要权限授权的模块 ID 列表（不包括 profile、admin 和 mini-games）
@@ -15,7 +15,7 @@ export const MODULE_IDS = ['profile', 'favor', 'gd', 'discover', 'mini-games', '
  * - mini-games 模块：所有人可访问（包括未登录用户）
  * - 其他模块：需要管理员授予权限
  */
-export const PERMISSION_REQUIRED_MODULE_IDS = ['favor', 'gd', 'discover'] as const;
+export const PERMISSION_REQUIRED_MODULE_IDS = ['favor', 'gd', 'discover', 'pih'] as const;
 
 /**
  * 模块 ID 类型

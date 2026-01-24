@@ -679,7 +679,7 @@ function Dashboard({
 			return false; // 非管理员不能访问
 		}
 
-		// favor、gd、discover 需要检查授权
+		// 其他需要权限的模块（如 favor、gd、discover、pih 等）需要检查授权
 		if (modulePermissions && modulePermissions[module.id] === true) {
 			return true;
 		}
