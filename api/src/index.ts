@@ -1754,32 +1754,63 @@ async function handleUserAvatar(request: Request, env: Env): Promise<Response> {
  * 注意：此端点需要支持 CORS，以便子站可以跨域访问
  */
 function handleJWKS(request: Request, env: Env): Response {
-	console.log('[API] /.well-known/jwks.json 请求');
+	const url = new URL(request.url);
+	const origin = request.headers.get('Origin');
+	const referer = request.headers.get('Referer');
+	
+	console.log(`[JWKS] 处理 JWKS 请求`);
+	console.log(`[JWKS] 请求 URL: ${request.url}`);
+	console.log(`[JWKS] 请求方法: ${request.method}`);
+	console.log(`[JWKS] Origin: ${origin || '无'}`);
+	console.log(`[JWKS] Referer: ${referer || '无'}`);
+	console.log(`[JWKS] Hostname: ${url.hostname}`);
 
-	// JWKS 格式的公钥配置
-	const jwks = {
-		keys: [
+	try {
+		// JWKS 格式的公钥配置
+		const jwks = {
+			keys: [
+				{
+					kty: 'RSA',
+					use: 'sig',
+					kid: 'key-1',
+					alg: 'RS256',
+					n: 'yCbUWpPO6xJe6sok-4Pz8AT-em6rgjjPEPhw_khz37Zy_qY8FTm6ZriJGK-c0ZgeiA-TzVzYyJxPlk58FFLdrcqOgQB1iVz9X676jBelaTrI5h9Z2m2QjGV5gQliSw69gP-NpvwbvdPtW9_r93ymt6_fVn3vME6Q79jhxgGvdU4dv1Sf0Ev2sZDUp4PYuEQegxRh1HhmYMSW9j9m5Lr2yS2os1JqQvWNdQNv_9B-uuimXpbRFr3bQ2P-UZ9hDWtmzukzBAgTVmCHliMT_41cMFEj0zw7MFbm3w8duE96mF1yO-a9b1ew0Stv1NvMrAwD0GrqvOPPKXX5SxINZtSBbw',
+					e: 'AQAB',
+				},
+			],
+		};
+
+		console.log(`[JWKS] 构建 JWKS 响应成功，包含 ${jwks.keys.length} 个密钥`);
+
+		// 使用 jsonWithCors 以支持跨域访问，并添加缓存控制
+		const response = jsonWithCors(
+			request,
+			env,
+			jwks,
+			200,
 			{
-				kty: 'RSA',
-				use: 'sig',
-				kid: 'key-1',
-				alg: 'RS256',
-				n: 'yCbUWpPO6xJe6sok-4Pz8AT-em6rgjjPEPhw_khz37Zy_qY8FTm6ZriJGK-c0ZgeiA-TzVzYyJxPlk58FFLdrcqOgQB1iVz9X676jBelaTrI5h9Z2m2QjGV5gQliSw69gP-NpvwbvdPtW9_r93ymt6_fVn3vME6Q79jhxgGvdU4dv1Sf0Ev2sZDUp4PYuEQegxRh1HhmYMSW9j9m5Lr2yS2os1JqQvWNdQNv_9B-uuimXpbRFr3bQ2P-UZ9hDWtmzukzBAgTVmCHliMT_41cMFEj0zw7MFbm3w8duE96mF1yO-a9b1ew0Stv1NvMrAwD0GrqvOPPKXX5SxINZtSBbw',
-				e: 'AQAB',
-			},
-		],
-	};
+				'Cache-Control': 'public, max-age=3600', // 缓存 1 小时
+			}
+		);
 
-	// 使用 jsonWithCors 以支持跨域访问，并添加缓存控制
-	return jsonWithCors(
-		request,
-		env,
-		jwks,
-		200,
-		{
-			'Cache-Control': 'public, max-age=3600', // 缓存 1 小时
-		}
-	);
+		console.log(`[JWKS] JWKS 响应已生成，状态码: 200`);
+		return response;
+	} catch (error) {
+		console.error(`[JWKS] 处理 JWKS 请求时发生错误:`, error);
+		console.error(`[JWKS] 错误详情:`, error instanceof Error ? error.message : String(error));
+		console.error(`[JWKS] 错误堆栈:`, error instanceof Error ? error.stack : '无堆栈信息');
+		
+		// 返回错误响应，但仍设置 CORS 头
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Internal Server Error',
+				message: '获取公钥失败',
+			},
+			500
+		);
+	}
 }
 
 /**
@@ -1925,38 +1956,56 @@ function getCorsHeaders(request: Request, env: Env): Headers {
 
 	if (origin) {
 		console.log(`[CORS] 请求 Origin: ${origin}`);
-		// 允许 scalarize.org 的所有子域名（包括 joel.scalarize.org 和 gd.scalarize.org）
-		if (origin.endsWith('.scalarize.org') || origin === 'https://scalarize.org' || origin === 'http://scalarize.org') {
-			allowedOrigin = origin;
-			console.log(`[CORS] 允许 scalarize.org 域名: ${origin}`);
-		}
-		// 允许 scalarize.cn 的所有子域名（包括 joel.scalarize.cn 和 gd.scalarize.cn）
-		// 用于支持 gd.scalarize.cn 通过 JWT bearer token 访问 joel.scalarize.cn 的 API
-		else if (origin.endsWith('.scalarize.cn') || origin === 'https://scalarize.cn' || origin === 'http://scalarize.cn') {
-			allowedOrigin = origin;
-			console.log(`[CORS] 允许 scalarize.cn 域名: ${origin}`);
-		}
-		// 开发环境：允许 localhost
-		else if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
-			allowedOrigin = origin;
-			console.log(`[CORS] 允许 localhost: ${origin}`);
-		}
-		// 如果配置了前端地址，也允许该地址（用于特殊情况）
-		else if (env.FRONTEND_URL) {
-			try {
-				const frontendOrigin = new URL(env.FRONTEND_URL).origin;
-				if (origin === frontendOrigin) {
-					allowedOrigin = origin;
-					console.log(`[CORS] 允许 FRONTEND_URL: ${origin}`);
-				}
-			} catch (error) {
-				console.error('[CORS] 解析 FRONTEND_URL 失败:', error);
+		try {
+			const originUrl = new URL(origin);
+			const hostname = originUrl.hostname.toLowerCase();
+			
+			// 允许 scalarize.org 的所有子域名（包括 joel.scalarize.org 和 gd.scalarize.org）
+			if (hostname.endsWith('.scalarize.org') || hostname === 'scalarize.org') {
+				allowedOrigin = origin;
+				console.log(`[CORS] 允许 scalarize.org 域名: ${origin}`);
 			}
-		} else {
-			console.log(`[CORS] Origin 不匹配任何规则: ${origin}`);
+			// 允许 scalarize.cn 的所有子域名（包括 joel.scalarize.cn 和 gd.scalarize.cn）
+			// 用于支持 gd.scalarize.cn 通过 JWT bearer token 访问 joel.scalarize.cn 的 API
+			else if (hostname.endsWith('.scalarize.cn') || hostname === 'scalarize.cn') {
+				allowedOrigin = origin;
+				console.log(`[CORS] 允许 scalarize.cn 域名: ${origin}`);
+			}
+			// 开发环境：允许 localhost 及其变体
+			else if (
+				hostname === 'localhost' ||
+				hostname === '127.0.0.1' ||
+				hostname === '::1' ||
+				hostname.startsWith('localhost:') ||
+				hostname.startsWith('127.0.0.1:')
+			) {
+				allowedOrigin = origin;
+				console.log(`[CORS] 允许 localhost 开发环境: ${origin} (hostname: ${hostname})`);
+			}
+			// 如果配置了前端地址，也允许该地址（用于特殊情况）
+			else if (env.FRONTEND_URL) {
+				try {
+					const frontendOrigin = new URL(env.FRONTEND_URL).origin;
+					if (origin === frontendOrigin) {
+						allowedOrigin = origin;
+						console.log(`[CORS] 允许 FRONTEND_URL: ${origin}`);
+					}
+				} catch (error) {
+					console.error('[CORS] 解析 FRONTEND_URL 失败:', error);
+				}
+			} else {
+				console.log(`[CORS] Origin 不匹配任何规则: ${origin} (hostname: ${hostname})`);
+			}
+		} catch (error) {
+			console.error(`[CORS] 解析 Origin URL 失败: ${origin}`, error);
+			// 如果解析失败，尝试简单的字符串匹配（向后兼容）
+			if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
+				allowedOrigin = origin;
+				console.log(`[CORS] 允许 localhost (简单匹配): ${origin}`);
+			}
 		}
 	} else {
-		console.log(`[CORS] 请求没有 Origin header`);
+		console.log(`[CORS] 请求没有 Origin header（可能是同源请求或直接访问）`);
 	}
 
 	if (allowedOrigin) {
