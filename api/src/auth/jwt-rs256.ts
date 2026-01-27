@@ -89,15 +89,12 @@ async function getRSAPrivateKey(env: { JWT_RSA_PRIVATE_KEY?: string }): Promise<
 	const pem = env.JWT_RSA_PRIVATE_KEY;
 	const pemHeader = '-----BEGIN PRIVATE KEY-----';
 	const pemFooter = '-----END PRIVATE KEY-----';
-	
+
 	if (!pem.includes(pemHeader) || !pem.includes(pemFooter)) {
 		throw new Error('JWT_RSA_PRIVATE_KEY 格式错误，应为 PEM 格式');
 	}
 
-	const pemContents = pem
-		.replace(pemHeader, '')
-		.replace(pemFooter, '')
-		.replace(/\s/g, ''); // 移除所有空白字符（包括换行符、空格等）
+	const pemContents = pem.replace(pemHeader, '').replace(pemFooter, '').replace(/\s/g, ''); // 移除所有空白字符（包括换行符、空格等）
 
 	// PEM 格式使用标准 base64，不是 base64url
 	const binaryDer = base64Decode(pemContents);
@@ -123,13 +120,15 @@ async function getRSAPrivateKey(env: { JWT_RSA_PRIVATE_KEY?: string }): Promise<
 
 /**
  * 构建 JWT Payload（包含权限信息）
+ * @param targetHostname 目标域名（可选），如果提供，会将其添加到 aud 字段中
  */
 export async function buildJWTPayload(
 	userId: string,
 	email: string,
 	name: string,
 	db: D1Database,
-	env: { PERM_VERSION?: string }
+	env: { PERM_VERSION?: string },
+	targetHostname?: string
 ): Promise<JWTPayload> {
 	const isAdmin = isAdminEmail(email);
 	const permissions = await getUserModulePermissions(db, userId);
@@ -157,10 +156,32 @@ export async function buildJWTPayload(
 	const permVersion = getPermVersion(env);
 	const now = Math.floor(Date.now() / 1000);
 
+	// 构建 aud 字段：默认包含所有子站域名
+	const aud: string[] = ['gd.scalarize.org', 'discover.scalarize.org', 'pih.scalarize.org'];
+
+	// 如果提供了目标域名，且不在列表中，则添加
+	if (targetHostname) {
+		// 对于 localhost 变体，添加所有可能的 localhost 标识符，确保子站验证时能匹配
+		if (targetHostname === 'localhost' || targetHostname === '127.0.0.1' || targetHostname === '::1') {
+			// 添加所有 localhost 变体，确保无论子站使用哪个都能验证通过
+			if (!aud.includes('localhost')) {
+				aud.push('localhost');
+			}
+			if (!aud.includes('127.0.0.1')) {
+				aud.push('127.0.0.1');
+			}
+			if (!aud.includes('::1')) {
+				aud.push('::1');
+			}
+		} else if (!aud.includes(targetHostname)) {
+			aud.push(targetHostname);
+		}
+	}
+
 	return {
 		iss: 'joel.scalarize.org',
 		sub: userId,
-		aud: ['gd.scalarize.org', 'discover.scalarize.org', 'pih.scalarize.org'],
+		aud,
 		exp: now + JWT_EXPIRES_IN,
 		iat: now,
 		userId,
@@ -173,18 +194,20 @@ export async function buildJWTPayload(
 
 /**
  * 生成 RS256 JWT Token
+ * @param targetHostname 目标域名（可选），如果提供，会将其添加到 aud 字段中
  */
 export async function generateJWT(
 	userId: string,
 	email: string,
 	name: string,
 	db: D1Database,
-	env: { JWT_RSA_PRIVATE_KEY?: string; PERM_VERSION?: string }
+	env: { JWT_RSA_PRIVATE_KEY?: string; PERM_VERSION?: string },
+	targetHostname?: string
 ): Promise<string> {
-	console.log(`[JWT] 生成 RS256 JWT token: userId=${userId}, email=${email}`);
+	console.log(`[JWT] 生成 RS256 JWT token: userId=${userId}, email=${email}, targetHostname=${targetHostname || 'default'}`);
 
 	// 构建 Payload
-	const payload = await buildJWTPayload(userId, email, name, db, env);
+	const payload = await buildJWTPayload(userId, email, name, db, env, targetHostname);
 
 	// Header
 	const header = {
@@ -200,7 +223,7 @@ export async function generateJWT(
 	const privateKey = await getRSAPrivateKey(env);
 	const signatureInput = `${encodedHeader}.${encodedPayload}`;
 	const signatureInputBytes = new TextEncoder().encode(signatureInput);
-	
+
 	const signature = await crypto.subtle.sign(
 		{
 			name: 'RSASSA-PKCS1-v1_5',
@@ -255,7 +278,7 @@ async function getRSAPublicKeyFromJWKS(): Promise<CryptoKey> {
 			false,
 			['verify']
 		);
-		
+
 		return publicKey;
 	} catch (error) {
 		console.error('[JWT] 导入公钥失败:', error);
@@ -267,11 +290,7 @@ async function getRSAPublicKeyFromJWKS(): Promise<CryptoKey> {
  * 验证并解析 RS256 JWT Token
  * 注意：此函数仅用于主站验证，子站应自行实现验证逻辑
  */
-export async function verifyJWT(
-	token: string,
-	env: { JWT_RSA_PRIVATE_KEY?: string },
-	kv?: KVNamespace
-): Promise<JWTPayload | null> {
+export async function verifyJWT(token: string, env: { JWT_RSA_PRIVATE_KEY?: string }, kv?: KVNamespace): Promise<JWTPayload | null> {
 	try {
 		const parts = token.split('.');
 
@@ -344,9 +363,7 @@ export async function verifyJWT(
 
 					// 如果 token 的发放时间早于最后登出时间，则视为失效
 					if (payload.iat < lastLogoutTimestamp) {
-						console.error(
-							`[JWT] Token 发放时间（${payload.iat}）早于用户最后登出时间（${lastLogoutTimestamp}），视为失效`
-						);
+						console.error(`[JWT] Token 发放时间（${payload.iat}）早于用户最后登出时间（${lastLogoutTimestamp}），视为失效`);
 						return null;
 					}
 				}
@@ -382,4 +399,3 @@ export function getJWTFromRequest(request: Request): string | null {
 
 	return null;
 }
-

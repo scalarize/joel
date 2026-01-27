@@ -468,9 +468,9 @@ async function handleAuth(request: Request, env: Env): Promise<Response> {
 		});
 	}
 
-	// 生成 JWT token
-	console.log(`[Auth] 为用户 ${user.email} 生成 JWT token`);
-	const jwtToken = await generateJWT(user.id, user.email, user.name, env.DB, env);
+	// 生成 JWT token（根据目标域名设置 aud 字段）
+	console.log(`[Auth] 为用户 ${user.email} 生成 JWT token，目标域名: ${redirectUrl.hostname}`);
+	const jwtToken = await generateJWT(user.id, user.email, user.name, env.DB, env, redirectUrl.hostname);
 
 	// 将 JWT token 添加到 redirect URL 的参数中
 	redirectUrl.searchParams.set('token', jwtToken);
