@@ -951,6 +951,7 @@ function handleApiPing(request: Request, env: Env): Response {
  * API: 用一次性 access_token 换取 JWT token
  * 接收 Bearer access_token，验证后返回 JWT token
  * access_token 使用后立即失效
+ * 注意：会根据请求的 Origin 或 Referer 重新生成 JWT token，确保 aud 字段包含子站域名
  */
 async function handleApiAccess(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/access 请求');
@@ -974,9 +975,9 @@ async function handleApiAccess(request: Request, env: Env): Promise<Response> {
 	console.log('[API] /api/access 获取到 access_token');
 
 	// 从 KV 中交换 access_token 获取 JWT token
-	const jwtToken = await exchangeAccessToken(env.USER_SESSION, accessToken);
+	const storedJwtToken = await exchangeAccessToken(env.USER_SESSION, accessToken);
 
-	if (!jwtToken) {
+	if (!storedJwtToken) {
 		console.log('[API] /api/access access_token 无效或已过期');
 		return jsonWithCors(
 			request,
@@ -989,7 +990,71 @@ async function handleApiAccess(request: Request, env: Env): Promise<Response> {
 		);
 	}
 
-	console.log('[API] /api/access 成功交换 JWT token');
+	// 解析存储的 JWT token 获取用户信息
+	const payload = await verifyJWT(storedJwtToken, env, env.USER_SESSION);
+	if (!payload) {
+		console.log('[API] /api/access 存储的 JWT token 无效');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Unauthorized',
+				message: 'JWT token 无效',
+			},
+			401
+		);
+	}
+
+	// 获取请求的域名（用于设置 aud 字段）
+	const origin = request.headers.get('Origin');
+	const referer = request.headers.get('Referer');
+	const requestUrl = new URL(request.url);
+	let targetHostname: string | undefined = undefined;
+
+	// 优先使用 Origin，其次使用 Referer，最后使用请求 URL 的 hostname
+	if (origin) {
+		try {
+			const originUrl = new URL(origin);
+			targetHostname = originUrl.hostname;
+		} catch (error) {
+			console.warn('[API] /api/access 解析 Origin 失败:', error);
+		}
+	}
+
+	if (!targetHostname && referer) {
+		try {
+			const refererUrl = new URL(referer);
+			targetHostname = refererUrl.hostname;
+		} catch (error) {
+			console.warn('[API] /api/access 解析 Referer 失败:', error);
+		}
+	}
+
+	if (!targetHostname) {
+		targetHostname = requestUrl.hostname;
+	}
+
+	console.log(`[API] /api/access 目标域名: ${targetHostname}`);
+
+	// 从数据库获取用户信息
+	const user = await getUserById(env.DB, payload.userId);
+	if (!user) {
+		console.log('[API] /api/access 用户不存在');
+		return jsonWithCors(
+			request,
+			env,
+			{
+				error: 'Not Found',
+				message: '用户不存在',
+			},
+			404
+		);
+	}
+
+	// 根据目标域名重新生成 JWT token，确保 aud 字段包含子站域名
+	const jwtToken = await generateJWT(user.id, user.email, user.name, env.DB, env, targetHostname);
+
+	console.log('[API] /api/access 成功交换并重新生成 JWT token');
 	return jsonWithCors(
 		request,
 		env,
