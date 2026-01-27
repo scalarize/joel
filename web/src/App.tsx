@@ -1062,11 +1062,15 @@ function SSOHandler({ user }: { user: User | null }) {
 			}
 
 			// 验证域名：必须是 *.scalarize.org 或 *.scalarize.cn
+			// 开发环境：允许 localhost（任何端口）
 			const isAllowedDomain =
 				redirectUrl.hostname.endsWith('.scalarize.org') ||
 				redirectUrl.hostname === 'scalarize.org' ||
 				redirectUrl.hostname.endsWith('.scalarize.cn') ||
-				redirectUrl.hostname === 'scalarize.cn';
+				redirectUrl.hostname === 'scalarize.cn' ||
+				redirectUrl.hostname === 'localhost' ||
+				redirectUrl.hostname === '127.0.0.1' ||
+				redirectUrl.hostname === '::1'; // IPv6 localhost
 
 			if (!isAllowedDomain) {
 				console.error(`[SSO] redirect URL 域名不允许: ${redirectUrl.hostname}`);

@@ -383,11 +383,25 @@ async function handleAuth(request: Request, env: Env): Promise<Response> {
 	}
 
 	// 允许的域名列表
-	const allowedHostnames = ['gd.scalarize.org', 'gd.scalarize.cn', 'discover.scalarize.org', 'discover.scalarize.cn'];
+	const allowedHostnames = [
+		'gd.scalarize.org',
+		'gd.scalarize.cn',
+		'discover.scalarize.org',
+		'discover.scalarize.cn',
+		'pih.scalarize.org',
+		'pih.scalarize.cn',
+	];
 
+	// 检查是否为允许的域名
 	const isAllowedHostname = allowedHostnames.some((hostname) => redirectUrl.hostname === hostname);
 
-	if (!isAllowedHostname) {
+	// 开发环境：允许 localhost（任何端口）
+	const isLocalhost =
+		redirectUrl.hostname === 'localhost' ||
+		redirectUrl.hostname === '127.0.0.1' ||
+		redirectUrl.hostname === '::1'; // IPv6 localhost
+
+	if (!isAllowedHostname && !isLocalhost) {
 		console.log(`[Auth] redirect URL 域名不允许: ${redirectUrl.hostname}`);
 		return new Response('redirect URL 域名不允许', { status: 403 });
 	}
@@ -429,12 +443,20 @@ async function handleAuth(request: Request, env: Env): Promise<Response> {
 	let moduleId = '';
 
 	// 根据 redirect URL 的域名判断需要检查哪个模块的权限
-	if (redirectUrl.hostname.includes('gd.scalarize')) {
+	// 注意：localhost 开发环境跳过权限检查（方便本地测试）
+	if (isLocalhost) {
+		console.log(`[Auth] localhost 开发环境，跳过权限检查`);
+		hasPermission = true;
+		moduleId = 'localhost';
+	} else if (redirectUrl.hostname.includes('gd.scalarize')) {
 		moduleId = 'gd';
 		hasPermission = await hasModulePermission(env.DB, user.id, 'gd', isAdmin);
 	} else if (redirectUrl.hostname.includes('discover.scalarize')) {
 		moduleId = 'discover';
 		hasPermission = await hasModulePermission(env.DB, user.id, 'discover', isAdmin);
+	} else if (redirectUrl.hostname.includes('pih.scalarize')) {
+		moduleId = 'pih';
+		hasPermission = await hasModulePermission(env.DB, user.id, 'pih', isAdmin);
 	}
 
 	if (!hasPermission) {
