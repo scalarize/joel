@@ -551,15 +551,19 @@ async function handleGoogleAuth(request: Request, env: Env): Promise<Response> {
 		try {
 			const redirectUrl = new URL(redirect, baseUrl);
 			// 允许 scalarize.org 和 scalarize.cn 域名下的跳转
+			// 开发环境：允许 localhost（任何端口）
 			const isAllowedDomain =
 				redirectUrl.hostname.endsWith('.scalarize.org') ||
 				redirectUrl.hostname === 'scalarize.org' ||
 				redirectUrl.hostname.endsWith('.scalarize.cn') ||
-				redirectUrl.hostname === 'scalarize.cn';
+				redirectUrl.hostname === 'scalarize.cn' ||
+				redirectUrl.hostname === 'localhost' ||
+				redirectUrl.hostname === '127.0.0.1' ||
+				redirectUrl.hostname === '::1'; // IPv6 localhost
 			if (isAllowedDomain) {
 				const encodedRedirect = safeBase64Encode(redirect);
 				finalState = `${state}|${encodedRedirect}`;
-				console.log(`[OAuth] 将跳转目标编码到 state 参数中`);
+				console.log(`[OAuth] 将跳转目标编码到 state 参数中: ${redirectUrl.hostname}`);
 			} else {
 				console.warn(`[OAuth] 跳转目标域名不允许: ${redirectUrl.hostname}`);
 			}
@@ -822,16 +826,29 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 
 		console.log(`[Callback] 登录成功，返回 JSON 响应`);
 
-		// 返回 JSON 响应，包含 JWT token
+		// 返回 JSON 响应，包含 JWT token 和 redirect（如果有）
 		// 不再设置 Cookie，只使用 JWT token
+		const responseData: {
+			success: boolean;
+			token: string;
+			message: string;
+			redirect?: string;
+		} = {
+			success: true,
+			token: jwtToken,
+			message: '登录成功',
+		};
+
+		// 如果有 redirect URL，添加到响应中
+		if (redirectFromState) {
+			responseData.redirect = redirectFromState;
+			console.log(`[Callback] 返回 redirect URL: ${redirectFromState}`);
+		}
+
 		return jsonWithCors(
 			request,
 			env,
-			{
-				success: true,
-				token: jwtToken,
-				message: '登录成功',
-			},
+			responseData,
 			200,
 			{
 				'Set-Cookie': clearStateCookie,

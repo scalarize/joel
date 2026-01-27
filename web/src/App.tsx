@@ -202,8 +202,19 @@ function App() {
 	const handleLogin = async () => {
 		console.log('[前端] 开始 Google 登录流程');
 		try {
+			// 从当前 URL 获取 redirect 参数
+			const url = new URL(window.location.href);
+			const redirectParam = url.searchParams.get('redirect');
+			
+			// 构建 API URL，如果有 redirect 参数则传递
+			const apiUrl = new URL(getApiUrl('/api/auth/google'));
+			if (redirectParam) {
+				apiUrl.searchParams.set('redirect', redirectParam);
+				console.log('[前端] 传递 redirect 参数到 OAuth 授权:', redirectParam);
+			}
+			
 			// 调用 API 获取授权 URL
-			const response = await fetch(getApiUrl('/api/auth/google'), {
+			const response = await fetch(apiUrl.toString(), {
 				method: 'GET',
 				credentials: 'include',
 			});
@@ -976,17 +987,31 @@ function GoogleCallbackHandler() {
 					console.log('[Google Callback] 登录成功，存储 JWT token');
 					localStorage.setItem('jwt_token', data.token);
 
-					// 清除 URL 中的参数
-					const cleanUrl = new URL(window.location.origin);
-					window.history.replaceState({}, '', cleanUrl.toString());
+					// 检查是否有 redirect 参数需要跳转
+					if (data.redirect) {
+						console.log('[Google Callback] 检测到 redirect 参数，跳转到 SSO 处理:', data.redirect);
+						setStatus('success');
+						setMessage('登录成功，正在跳转...');
+						
+						// 跳转到 SSO 处理，传递 redirect 参数
+						setTimeout(() => {
+							const ssoUrl = new URL('/sso', window.location.origin);
+							ssoUrl.searchParams.set('redirect', data.redirect);
+							window.location.href = ssoUrl.toString();
+						}, 1000);
+					} else {
+						// 清除 URL 中的参数
+						const cleanUrl = new URL(window.location.origin);
+						window.history.replaceState({}, '', cleanUrl.toString());
 
-					setStatus('success');
-					setMessage('登录成功，正在跳转...');
+						setStatus('success');
+						setMessage('登录成功，正在跳转...');
 
-					// 刷新页面以触发 checkAuth
-					setTimeout(() => {
-						window.location.href = '/';
-					}, 1000);
+						// 刷新页面以触发 checkAuth
+						setTimeout(() => {
+							window.location.href = '/';
+						}, 1000);
+					}
 				} else {
 					console.error('[Google Callback] API 响应格式错误:', data);
 					setStatus('error');
