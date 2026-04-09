@@ -296,6 +296,11 @@ export default {
 				});
 			}
 
+			// 中文维基百科反向代理
+			if (path.startsWith('/wiki') || path.startsWith('/w/')) {
+				return handleWikiProxy(request, url);
+			}
+
 			// 404
 			return new Response('Not Found', { status: 404 });
 		} catch (error) {
@@ -3615,4 +3620,75 @@ async function handlePuzzlerUploadImage(request: Request, env: Env): Promise<Res
 			500
 		);
 	}
+}
+
+/**
+ * 中文维基百科反向代理
+ * 代理 /wiki/* 和 /w/* 路径到 zh.wikipedia.org
+ */
+async function handleWikiProxy(request: Request, url: URL): Promise<Response> {
+	const targetUrl = new URL(url.pathname + url.search, 'https://zh.wikipedia.org');
+
+	const headers = new Headers();
+	headers.set('Host', 'zh.wikipedia.org');
+	headers.set('User-Agent', request.headers.get('User-Agent') || 'Mozilla/5.0');
+	headers.set('Accept', request.headers.get('Accept') || '*/*');
+	headers.set('Accept-Language', request.headers.get('Accept-Language') || 'zh-CN,zh;q=0.9');
+
+	const response = await fetch(targetUrl.toString(), {
+		method: request.method,
+		headers,
+		redirect: 'manual',
+	});
+
+	const responseHeaders = new Headers(response.headers);
+	// 移除可能干扰的头
+	responseHeaders.delete('set-cookie');
+	responseHeaders.delete('content-security-policy');
+	responseHeaders.delete('content-security-policy-report-only');
+	responseHeaders.delete('strict-transport-security');
+	responseHeaders.delete('x-frame-options');
+
+	// 处理重定向：将维基百科域名重写为当前域名
+	if (response.status >= 300 && response.status < 400) {
+		const location = response.headers.get('location');
+		if (location) {
+			const redirectUrl = new URL(location, 'https://zh.wikipedia.org');
+			if (redirectUrl.hostname === 'zh.wikipedia.org') {
+				responseHeaders.set('location', redirectUrl.pathname + redirectUrl.search);
+			}
+		}
+		return new Response(null, {
+			status: response.status,
+			headers: responseHeaders,
+		});
+	}
+
+	const contentType = response.headers.get('content-type') || '';
+	if (contentType.includes('text/html')) {
+		let html = await response.text();
+		// 将维基百科绝对 URL 重写为相对路径
+		html = html.replaceAll('https://zh.wikipedia.org', '');
+		html = html.replaceAll('//zh.wikipedia.org', '');
+		return new Response(html, {
+			status: response.status,
+			headers: responseHeaders,
+		});
+	}
+
+	// 对于 CSS，也重写其中的维基百科 URL
+	if (contentType.includes('text/css')) {
+		let css = await response.text();
+		css = css.replaceAll('https://zh.wikipedia.org', '');
+		css = css.replaceAll('//zh.wikipedia.org', '');
+		return new Response(css, {
+			status: response.status,
+			headers: responseHeaders,
+		});
+	}
+
+	return new Response(response.body, {
+		status: response.status,
+		headers: responseHeaders,
+	});
 }
