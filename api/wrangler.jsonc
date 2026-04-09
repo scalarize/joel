@@ -11,6 +11,10 @@
 	"observability": {
 		"enabled": true
 	},
+	"routes": [
+		{ "pattern": "joel.scalarize.org/wiki/*", "zone_name": "scalarize.org" },
+		{ "pattern": "joel.scalarize.org/w/*", "zone_name": "scalarize.org" }
+	],
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
